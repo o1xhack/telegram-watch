@@ -205,3 +205,23 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# --- tgwatch project-specific (secrets + local state) ---
+# real config with api_hash / chat ids
+config.toml
+
+# Telethon session files
+*.session
+*.session-journal
+
+# local runtime outputs (db/media/reports/logs)
+data/
+reports/
+logs/
+*.sqlite3
+*.db
+
+# macOS
+.DS_Store
+
+.vscode/
