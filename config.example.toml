@@ -1,0 +1,19 @@
+[telegram]
+api_id = 123456
+api_hash = "PUT_YOUR_API_HASH_HERE"
+session_file = "data/tgwatch.session"
+
+[target]
+target_chat_id = -1001234567890
+tracked_user_ids = [11111111, 22222222]
+
+[control]
+control_chat_id = -1009876543210
+
+[storage]
+db_path = "data/tgwatch.sqlite3"
+media_dir = "data/media"
+
+[reporting]
+reports_dir = "reports"
+summary_interval_minutes = 120

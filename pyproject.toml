@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "telegram-watch"
+version = "0.1.0"
+description = "Telegram user account watcher (MTProto)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "telethon>=1.34.0",
+    "jinja2>=3.1.3",
+    "rich>=13.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-asyncio>=0.23",
+    "tomli>=2.0.1; python_version < '3.11'",
+]
+
+[project.scripts]
+tgwatch = "telegram_watch.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["telegram_watch*", "tgwatch*"]
