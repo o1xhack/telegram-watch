@@ -34,6 +34,8 @@ pip install -e .
    - `storage.db_path` & `storage.media_dir`
    - `reporting.reports_dir` & `reporting.summary_interval_minutes`
 
+   See `docs/configuration.md` for step-by-step instructions on gathering Telegram IDs, filling the credential fields, and choosing safe local storage paths.
+
 > ⚠️ Never commit `config.toml`, session files, `data/`, or `reports/`. These contain private information.
 
 ## Usage
