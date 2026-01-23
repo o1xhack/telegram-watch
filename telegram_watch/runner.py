@@ -567,7 +567,8 @@ async def _send_with_backoff(
     message: str,
     **kwargs,
 ) -> None:
-    await _with_floodwait(client.send_message, entity, message, **kwargs)
+    target = await _resolve_entity(client, entity)
+    await _with_floodwait(client.send_message, target, message, **kwargs)
 
 
 async def _send_file_with_backoff(
@@ -576,7 +577,29 @@ async def _send_file_with_backoff(
     file_path: Path,
     **kwargs,
 ) -> None:
-    await _with_floodwait(client.send_file, entity, file=str(file_path), **kwargs)
+    target = await _resolve_entity(client, entity)
+    await _with_floodwait(client.send_file, target, file=file_path, **kwargs)
+
+
+async def _resolve_entity(
+    client: TelegramClient,
+    entity: int | str,
+) -> object:
+    if isinstance(entity, int):
+        self_id = await _get_self_id(client)
+        if entity == self_id:
+            return await _with_floodwait(client.get_input_entity, "me")
+    return await _with_floodwait(client.get_input_entity, entity)
+
+
+async def _get_self_id(client: TelegramClient) -> int:
+    cached = getattr(client, "_tgwatch_self_id", None)
+    if cached is not None:
+        return cached
+    me = await _with_floodwait(client.get_me)
+    cached = int(getattr(me, "id"))
+    setattr(client, "_tgwatch_self_id", cached)
+    return cached
 
 
 async def _reply(event: events.NewMessage.Event, text: str) -> None:
