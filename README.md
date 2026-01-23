@@ -84,6 +84,7 @@ python -m tgwatch run --config config.toml
 Run mode:
 
 - Listens to the target chat; when tracked users send messages, stores them (text, replies, media snapshots).
+- Captures reply context, including quoted text and media, so reports show the referenced screenshots.
 - Schedules a periodic summary (default every 120 minutes) that posts a digest + local report path to the `control_chat_id`.
 - Listens for commands **from your own account** inside the control chat:
   - `/help`

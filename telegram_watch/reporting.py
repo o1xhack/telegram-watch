@@ -10,7 +10,7 @@ from typing import Sequence
 import os
 
 from .config import Config
-from .storage import DbMessage
+from .storage import DbMessage, DbMedia
 from .timeutils import humanize_timedelta, utc_now
 
 
@@ -111,6 +111,7 @@ def _render_message(message: DbMessage, config: Config, report_dir: Path) -> str
         f"<pre>{escape(message.text)}</pre>" if message.text is not None else "<em>No text</em>"
     )
     reply_block = ""
+    reply_media = [media for media in message.media if media.is_reply]
     if message.replied_sender_id:
         reply_text = (
             escape(message.replied_text or "")
@@ -126,16 +127,11 @@ def _render_message(message: DbMessage, config: Config, report_dir: Path) -> str
             '<div class="reply">'
             f"Reply to {escape(replied_to)} at {escape(message.replied_date.isoformat() if message.replied_date else 'unknown')}"
             f"<div>{reply_text}</div>"
+            f"{_render_media_gallery(reply_media, report_dir) if reply_media else ''}"
             "</div>"
         )
-    media_block = ""
-    if message.media:
-        figures = []
-        for media in message.media:
-            abs_path = Path(media.file_path).resolve()
-            rel_url = os.path.relpath(abs_path, report_dir)
-            figures.append(f'<img src="{escape(rel_url)}" alt="media {media.media_index}">')
-        media_block = '<div class="media-gallery">' + "".join(figures) + "</div>"
+    regular_media = [media for media in message.media if not media.is_reply]
+    media_block = _render_media_gallery(regular_media, report_dir)
     return (
         '<div class="message">'
         f'<div class="timestamp">{escape(message.date.isoformat())} — message #{message.message_id}</div>'
@@ -144,6 +140,17 @@ def _render_message(message: DbMessage, config: Config, report_dir: Path) -> str
         f"{media_block}"
         "</div>"
     )
+
+
+def _render_media_gallery(media_items: list[DbMedia], report_dir: Path) -> str:
+    if not media_items:
+        return ""
+    figures = []
+    for media in media_items:
+        abs_path = Path(media.file_path).resolve()
+        rel_url = os.path.relpath(abs_path, report_dir)
+        figures.append(f'<img src="{escape(rel_url)}" alt="media {media.media_index}">')
+    return '<div class="media-gallery">' + "".join(figures) + "</div>"
 
 
 def _group_by_user(messages: Sequence[DbMessage]) -> dict[int, list[DbMessage]]:

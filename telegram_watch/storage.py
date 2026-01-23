@@ -18,6 +18,7 @@ class StoredMedia:
     mime_type: str | None
     file_size: int | None
     media_index: int
+    is_reply: bool = False
 
 
 @dataclass
@@ -39,6 +40,7 @@ class DbMedia:
     file_path: str
     mime_type: str | None
     file_size: int | None
+    is_reply: bool
 
 
 @dataclass
@@ -86,6 +88,7 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             file_path TEXT NOT NULL,
             mime_type TEXT,
             file_size INTEGER,
+            is_reply INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (chat_id, message_id, media_index),
             FOREIGN KEY (chat_id, message_id) REFERENCES messages(chat_id, message_id) ON DELETE CASCADE
         );
@@ -96,6 +99,16 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             ON messages(date);
         """
     )
+    _ensure_media_columns(conn)
+
+
+def _ensure_media_columns(conn: sqlite3.Connection) -> None:
+    columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(media)").fetchall()
+    }
+    if "is_reply" not in columns:
+        conn.execute("ALTER TABLE media ADD COLUMN is_reply INTEGER NOT NULL DEFAULT 0")
 
 
 def persist_message(
@@ -140,8 +153,8 @@ def persist_message(
             conn.execute(
                 """
                 INSERT INTO media (
-                    chat_id, message_id, media_index, file_path, mime_type, file_size
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    chat_id, message_id, media_index, file_path, mime_type, file_size, is_reply
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     media.chat_id,
@@ -150,6 +163,7 @@ def persist_message(
                     media.file_path,
                     media.mime_type,
                     media.file_size,
+                    1 if media.is_reply else 0,
                 ),
             )
 
@@ -250,6 +264,7 @@ def _attach_media(conn: sqlite3.Connection, messages: list[DbMessage]) -> None:
             file_path=row["file_path"],
             mime_type=row["mime_type"],
             file_size=row["file_size"],
+            is_reply=bool(row["is_reply"]),
         )
         media_by_key.setdefault(key, []).append(media)
     for message in messages:

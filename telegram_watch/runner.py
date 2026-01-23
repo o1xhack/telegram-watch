@@ -118,8 +118,17 @@ async def _capture_message(
         return None
     chat_id = int(getattr(message, "chat_id", config.target.target_chat_id))
     msg_dt = _ensure_tz(message.date)
-    reply_info = await _get_reply_snapshot(message)
-    media_items = await _download_media(client, config.storage.media_dir, message, chat_id)
+    reply_info = await _get_reply_snapshot(
+        client, config.storage.media_dir, message, chat_id
+    )
+    media_items = await _download_media(
+        client, config.storage.media_dir, message, chat_id
+    )
+    if reply_info and reply_info.media:
+        base_index = len(media_items)
+        for offset, media in enumerate(reply_info.media, start=base_index):
+            media.media_index = offset
+        media_items.extend(reply_info.media)
     stored_msg = StoredMessage(
         chat_id=chat_id,
         message_id=int(message.id),
@@ -139,9 +148,15 @@ class ReplySnapshot:
     sender_id: int | None
     text: str | None
     date: datetime | None
+    media: list[StoredMedia]
 
 
-async def _get_reply_snapshot(message: custom_message.Message) -> ReplySnapshot | None:
+async def _get_reply_snapshot(
+    client: TelegramClient,
+    media_dir: Path,
+    message: custom_message.Message,
+    chat_id: int,
+) -> ReplySnapshot | None:
     if not message.is_reply:
         return None
     try:
@@ -154,10 +169,20 @@ async def _get_reply_snapshot(message: custom_message.Message) -> ReplySnapshot 
     text = reply.message or reply.raw_text or ""
     if len(text) > 280:
         text = text[:279] + "…"
+    reply_media = await _download_media(
+        client,
+        media_dir,
+        reply,
+        chat_id,
+        base_name=f"{message.id}_reply_{reply.id}",
+        is_reply=True,
+        owner_message_id=int(message.id),
+    )
     return ReplySnapshot(
         sender_id=getattr(reply, "sender_id", None),
         text=text,
         date=_ensure_tz(reply.date) if reply.date else None,
+        media=reply_media,
     )
 
 
@@ -166,16 +191,20 @@ async def _download_media(
     media_dir: Path,
     message: custom_message.Message,
     chat_id: int,
+    *,
+    base_name: str | None = None,
+    is_reply: bool = False,
+    owner_message_id: int | None = None,
 ) -> list[StoredMedia]:
     if not message.media:
         return []
     target_dir = media_dir / str(chat_id)
     target_dir.mkdir(parents=True, exist_ok=True)
-    base_name = f"{message.id}"
+    file_stub = base_name or f"{message.id}"
     downloaded_path = await _with_floodwait(
         client.download_media,
         message,
-        file=target_dir / base_name,
+        file=target_dir / file_stub,
     )
     if not downloaded_path:
         return []
@@ -187,11 +216,12 @@ async def _download_media(
     return [
         StoredMedia(
             chat_id=chat_id,
-            message_id=int(message.id),
+            message_id=owner_message_id or int(message.id),
             file_path=str(path),
             mime_type=mime,
             file_size=stat.st_size,
             media_index=0,
+            is_reply=is_reply,
         )
     ]
 

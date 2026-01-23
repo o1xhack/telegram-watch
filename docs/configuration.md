@@ -85,7 +85,7 @@ Field | Description | Default
 `reports_dir` | Root folder for generated HTML reports. Subdirectories follow `reports/YYYY-MM-DD/HHMM/index.html`. | `reports`
 `summary_interval_minutes` | How often the `run` command posts summary digests to the control chat. | `120` (2 hours)
 
-Reports and media stay local; nothing leaves your machine unless you explicitly share the files.
+Reports and media stay local; nothing leaves your machine unless you explicitly share the files. Reply sections in each report include any quoted images/documents so you can see the full context without opening Telegram.
 
 ## 7. Validate the configuration
 
