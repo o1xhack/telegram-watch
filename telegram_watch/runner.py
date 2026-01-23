@@ -220,7 +220,9 @@ class _TargetHandler:
         with db_session(self.config.storage.db_path) as conn:
             persist_message(conn, message, media)
         logger.info(
-            "Captured message %s from %s", message.message_id, message.sender_id
+            "Captured message %s from %s",
+            message.message_id,
+            self.config.describe_user(int(message.sender_id)),
         )
 
 
@@ -277,7 +279,8 @@ class _ControlHandler:
         if not messages:
             await _reply(event, "No messages stored yet.")
             return
-        lines = [f"Last {len(messages)} messages for {user_id}:"]
+        label = self.config.describe_user(user_id)
+        lines = [f"Last {len(messages)} messages for {label}:"]
         for msg in messages:
             lines.append(_format_message_line(msg))
         await _reply(event, "\n".join(lines))
@@ -298,7 +301,8 @@ class _ControlHandler:
             return
         lines = [f"Summary since {since.isoformat()}"]
         for user_id in sorted(counts):
-            lines.append(f"- {user_id}: {counts[user_id]} message(s)")
+            label = self.config.describe_user(user_id)
+            lines.append(f"- {label}: {counts[user_id]} message(s)")
         await _reply(event, "\n".join(lines))
 
     async def _cmd_export(self, event: events.NewMessage.Event, args: Sequence[str]) -> None:
@@ -388,7 +392,7 @@ class _SummaryLoop:
             logger.info("No tracked messages since last summary.")
             return
         report = generate_report(messages, self.config, since, now)
-        digest = build_digest(messages, since, now)
+        digest = build_digest(messages, self.config, since, now)
         await _send_with_backoff(
             self.client,
             self.config.control.control_chat_id,

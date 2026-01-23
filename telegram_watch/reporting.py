@@ -42,7 +42,7 @@ def generate_report(
         / now.strftime("%H%M")
     )
     report_dir.mkdir(parents=True, exist_ok=True)
-    html = _render_html(messages, since, until, report_dir)
+    html = _render_html(messages, config, since, until, report_dir)
     path = report_dir / "index.html"
     path.write_text(html, encoding="utf-8")
     return path
@@ -50,6 +50,7 @@ def generate_report(
 
 def build_digest(
     messages: Sequence[DbMessage],
+    config: Config,
     since: datetime,
     until: datetime | None,
 ) -> str:
@@ -62,7 +63,8 @@ def build_digest(
         for msg in items[:3]:
             preview = _short_preview(msg)
             previews.append(f"- {preview}")
-        lines.append(f"User {sender_id}: {len(items)} msgs")
+        label = config.describe_user(sender_id)
+        lines.append(f"{label}: {len(items)} msgs")
         lines.extend(previews)
     if len(lines) == 1:
         lines.append("No tracked messages in this window.")
@@ -71,6 +73,7 @@ def build_digest(
 
 def _render_html(
     messages: Sequence[DbMessage],
+    config: Config,
     since: datetime,
     until: datetime | None,
     report_dir: Path,
@@ -93,16 +96,17 @@ def _render_html(
     if not grouped:
         body_parts.append("<p>No tracked messages.</p>")
     for sender_id, items in grouped.items():
+        label = config.describe_user(sender_id)
         body_parts.append(f'<div class="user-section">')
-        body_parts.append(f"<h2>Tracked user {sender_id}</h2>")
+        body_parts.append(f"<h2>{escape(label)}</h2>")
         for msg in items:
-            body_parts.append(_render_message(msg, report_dir))
+            body_parts.append(_render_message(msg, config, report_dir))
         body_parts.append("</div>")
     body_parts.append("</body></html>")
     return "\n".join(body_parts)
 
 
-def _render_message(message: DbMessage, report_dir: Path) -> str:
+def _render_message(message: DbMessage, config: Config, report_dir: Path) -> str:
     text_html = (
         f"<pre>{escape(message.text)}</pre>" if message.text is not None else "<em>No text</em>"
     )
@@ -113,9 +117,14 @@ def _render_message(message: DbMessage, report_dir: Path) -> str:
             if message.replied_text
             else "<em>no text</em>"
         )
+        replied_to = (
+            config.describe_user(int(message.replied_sender_id))
+            if message.replied_sender_id is not None
+            else "unknown user"
+        )
         reply_block = (
             '<div class="reply">'
-            f"Reply to {message.replied_sender_id} at {escape(message.replied_date.isoformat() if message.replied_date else 'unknown')}"
+            f"Reply to {escape(replied_to)} at {escape(message.replied_date.isoformat() if message.replied_date else 'unknown')}"
             f"<div>{reply_text}</div>"
             "</div>"
         )

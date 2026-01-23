@@ -44,6 +44,7 @@ python -m pip install -e .
    - `telegram.session_file` (defaults to `data/tgwatch.session`)
    - `target.target_chat_id` (the group/channel ID)
    - `target.tracked_user_ids` (list of numeric user IDs to monitor)
+   - `[target.tracked_user_aliases]` (optional ID→alias mapping for nicer reports)
    - `control.control_chat_id` (where digests + commands live)
    - `storage.db_path` & `storage.media_dir`
    - `reporting.reports_dir` & `reporting.summary_interval_minutes`

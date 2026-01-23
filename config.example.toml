@@ -7,6 +7,10 @@ session_file = "data/tgwatch.session"
 target_chat_id = -1001234567890
 tracked_user_ids = [11111111, 22222222]
 
+[target.tracked_user_aliases]
+11111111 = "Alice"
+22222222 = "Bob"
+
 [control]
 control_chat_id = -1009876543210
 

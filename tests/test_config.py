@@ -68,3 +68,58 @@ def test_missing_fields_raise(tmp_path):
     )
     with pytest.raises(ConfigError):
         load_config(cfg_path)
+
+
+def test_tracked_user_aliases_optional(tmp_path):
+    cfg_path = write_config(
+        tmp_path,
+        """
+        [telegram]
+        api_id = 42
+        api_hash = "abcdefghijk"
+
+        [target]
+        target_chat_id = -1001
+        tracked_user_ids = [123]
+
+        [target.tracked_user_aliases]
+        123 = "Alice"
+
+        [control]
+        control_chat_id = -1002
+
+        [storage]
+        db_path = "data/app.sqlite3"
+        media_dir = "data/media"
+        """,
+    )
+    config = load_config(cfg_path)
+    assert config.target.tracked_user_aliases[123] == "Alice"
+    assert config.describe_user(123) == "Alice (123)"
+
+
+def test_aliases_must_match_tracked_users(tmp_path):
+    cfg_path = write_config(
+        tmp_path,
+        """
+        [telegram]
+        api_id = 42
+        api_hash = "abcdefghijk"
+
+        [target]
+        target_chat_id = -1001
+        tracked_user_ids = [321]
+
+        [target.tracked_user_aliases]
+        999 = "Ghost"
+
+        [control]
+        control_chat_id = -1002
+
+        [storage]
+        db_path = "data/app.sqlite3"
+        media_dir = "data/media"
+        """,
+    )
+    with pytest.raises(ConfigError):
+        load_config(cfg_path)

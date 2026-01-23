@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, List
+from typing import Any, Iterable, List, Mapping
+from types import MappingProxyType
 
 try:  # pragma: no cover - Python 3.11+ always hits first branch
     import tomllib
@@ -27,6 +28,7 @@ class TelegramConfig:
 class TargetConfig:
     target_chat_id: int
     tracked_user_ids: tuple[int, ...]
+    tracked_user_aliases: Mapping[int, str]
 
 
 @dataclass(frozen=True)
@@ -57,6 +59,12 @@ class Config:
     @property
     def tracked_users_set(self) -> set[int]:
         return set(self.target.tracked_user_ids)
+
+    def describe_user(self, user_id: int) -> str:
+        alias = self.target.tracked_user_aliases.get(user_id)
+        if alias:
+            return f"{alias} ({user_id})"
+        return str(user_id)
 
 
 def load_config(path: Path) -> Config:
@@ -105,7 +113,28 @@ def _parse_target(raw: dict[str, Any]) -> TargetConfig:
         raise ConfigError("target.tracked_user_ids must be ints") from exc
     if not ids_iter:
         raise ConfigError("target.tracked_user_ids cannot be empty")
-    return TargetConfig(target_chat_id=target_chat_id, tracked_user_ids=ids_iter)
+    aliases_raw = raw.get("tracked_user_aliases", {})
+    if aliases_raw and not isinstance(aliases_raw, dict):
+        raise ConfigError("target.tracked_user_aliases must be a table of id = \"Alias\" entries")
+    aliases: dict[int, str] = {}
+    for key, value in aliases_raw.items():
+        try:
+            user_id = int(key)
+        except (TypeError, ValueError) as exc:
+            raise ConfigError("tracked_user_aliases keys must be integers") from exc
+        alias = str(value).strip()
+        if not alias:
+            raise ConfigError(f"Alias for user {user_id} cannot be empty")
+        aliases[user_id] = alias
+    unknown_aliases = set(aliases) - set(ids_iter)
+    if unknown_aliases:
+        formatted = ", ".join(str(uid) for uid in sorted(unknown_aliases))
+        raise ConfigError(f"Alias configured for unknown tracked user(s): {formatted}")
+    return TargetConfig(
+        target_chat_id=target_chat_id,
+        tracked_user_ids=ids_iter,
+        tracked_user_aliases=MappingProxyType(aliases),
+    )
 
 
 def _parse_control(raw: dict[str, Any]) -> ControlConfig:

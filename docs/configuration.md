@@ -32,6 +32,18 @@ Tips:
 - Always keep the IDs numeric; quoted usernames will not work.
 - Include only the users you care about; everything else is ignored.
 
+### Optional aliases
+
+To make reports easier to read, you can assign human-friendly labels to each tracked user ID.
+
+```toml
+[target.tracked_user_aliases]
+11111111 = "Alice"
+22222222 = "Bob (PM)"
+```
+
+Each key must match an ID listed in `tracked_user_ids`. Reports and control-chat summaries will display `Alice (11111111)` instead of a bare number.
+
 ### Private group without invite link
 
 If you joined a private group and cannot create invite links, you still have a few options to reveal the numeric `target_chat_id`:
