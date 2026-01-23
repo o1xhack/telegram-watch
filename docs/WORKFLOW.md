@@ -26,7 +26,10 @@ All structured requirements must be created under `docs/requests/` using:
 
 `REQ-YYYYMMDD-###-slug.md`
 
-Example: `REQ-20260117-001-track-users-digest.md`
+* `YYYYMMDD` **must match the actual calendar date when the file is first created.**
+* `###` is a zero-padded sequence number for that day (start at 001 and increment per new request).
+
+Example: `REQ-20260123-001-track-users-digest.md`
 
 ## Status Lifecycle (Required)
 

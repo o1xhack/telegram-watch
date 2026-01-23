@@ -1,8 +1,9 @@
 # REQ-YYYYMMDD-###-slug
+# 命名规则：`YYYYMMDD` 必须使用需求实际创建当天的日期，`###` 为当日递增编号。
 
 Status: Draft
 Owner: @you
-Created: YYYY-MM-DD
+Created: YYYY-MM-DD  # 与文件名中的日期一致
 
 ## Summary
 一句话描述要做什么（非技术语言）。

@@ -48,29 +48,6 @@ def generate_report(
     return path
 
 
-def build_digest(
-    messages: Sequence[DbMessage],
-    config: Config,
-    since: datetime,
-    until: datetime | None,
-) -> str:
-    """Build a compact digest for control chat."""
-    grouped = _group_by_user(messages)
-    headline = f"Tracked messages {since.isoformat()} → {(until.isoformat() if until else 'now')}"
-    lines = [headline]
-    for sender_id, items in grouped.items():
-        previews = []
-        for msg in items[:3]:
-            preview = _short_preview(msg)
-            previews.append(f"- {preview}")
-        label = config.describe_user(sender_id)
-        lines.append(f"{label}: {len(items)} msgs")
-        lines.extend(previews)
-    if len(lines) == 1:
-        lines.append("No tracked messages in this window.")
-    return "\n".join(lines)
-
-
 def _render_html(
     messages: Sequence[DbMessage],
     config: Config,
@@ -158,11 +135,3 @@ def _group_by_user(messages: Sequence[DbMessage]) -> dict[int, list[DbMessage]]:
     for msg in messages:
         grouped[msg.sender_id].append(msg)
     return grouped
-
-
-def _short_preview(message: DbMessage) -> str:
-    text = message.text or "<no text>"
-    text = text.replace("\n", " ")
-    if len(text) > 90:
-        text = text[:90] + "…"
-    return f"{message.date.isoformat()} — {text}"

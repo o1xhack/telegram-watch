@@ -13,7 +13,7 @@ from telethon import TelegramClient, events, errors
 from telethon.tl.custom import message as custom_message
 
 from .config import Config
-from .reporting import build_digest, generate_report
+from .reporting import generate_report
 from .storage import (
     DbMessage,
     StoredMedia,
@@ -350,7 +350,14 @@ class _ControlHandler:
                 conn, self.config.target.tracked_user_ids, since, until
             )
         report = generate_report(messages, self.config, since, until)
-        await _reply(event, f"Export ready: {report}")
+        await _send_report_bundle(
+            self.client,
+            self.config,
+            messages,
+            since,
+            until,
+            report,
+        )
 
     async def _resolve_user(self, arg: str) -> int:
         arg = arg.strip()
@@ -422,15 +429,108 @@ class _SummaryLoop:
             logger.info("No tracked messages since last summary.")
             return
         report = generate_report(messages, self.config, since, now)
-        digest = build_digest(messages, self.config, since, now)
-        await _send_with_backoff(
+        await _send_report_bundle(
             self.client,
-            self.config.control.control_chat_id,
-            f"{digest}\nReport: {report}",
+            self.config,
+            messages,
+            since,
+            now,
+            report,
         )
 
 
 T = TypeVar("T")
+
+
+async def _send_report_bundle(
+    client: TelegramClient,
+    config: Config,
+    messages: Sequence[DbMessage],
+    since: datetime,
+    until: datetime | None,
+    report_path: Path,
+) -> None:
+    window = f"{since.isoformat()} → {(until.isoformat() if until else 'now')}"
+    caption = f"tgwatch report\nWindow: {window}\nMessages: {len(messages)}"
+    control = config.control.control_chat_id
+    await _send_file_with_backoff(
+        client,
+        control,
+        report_path,
+        caption=caption,
+    )
+    await _send_messages_to_control(client, config, control, messages)
+
+
+async def _send_messages_to_control(
+    client: TelegramClient,
+    config: Config,
+    control_chat_id: int,
+    messages: Sequence[DbMessage],
+) -> None:
+    for message in messages:
+        text = _format_control_message(message, config)
+        await _send_with_backoff(client, control_chat_id, text)
+        await _send_media_for_message(client, control_chat_id, message, config)
+
+
+async def _send_media_for_message(
+    client: TelegramClient,
+    control_chat_id: int,
+    message: DbMessage,
+    config: Config,
+) -> None:
+    if not message.media:
+        return
+    sender_label = config.describe_user(message.sender_id)
+    for media in message.media:
+        file_path = Path(media.file_path)
+        if not file_path.exists():
+            logger.warning("Media file missing on disk: %s", file_path)
+            continue
+        if media.is_reply:
+            reply_label = (
+                config.describe_user(message.replied_sender_id)
+                if message.replied_sender_id
+                else "unknown"
+            )
+            caption = (
+                f"Reply media for message #{message.message_id}\n"
+                f"Original sender: {reply_label}"
+            )
+        else:
+            caption = f"Media for {sender_label} — message #{message.message_id}"
+        await _send_file_with_backoff(
+            client,
+            control_chat_id,
+            file_path,
+            caption=caption,
+        )
+
+
+def _format_control_message(message: DbMessage, config: Config) -> str:
+    label = config.describe_user(message.sender_id)
+    lines = [
+        f"{label}",
+        f"Time: {message.date.isoformat()} — message #{message.message_id}",
+    ]
+    if message.replied_sender_id:
+        reply_label = config.describe_user(message.replied_sender_id)
+        reply_line = f"↩ Reply to {reply_label}"
+        if message.replied_date:
+            reply_line += f" at {message.replied_date.isoformat()}"
+        lines.append(reply_line)
+        if message.replied_text:
+            lines.append(f"Quoted: {message.replied_text}")
+    lines.append("Content:")
+    lines.append(message.text or "<no text>")
+    regular_media = sum(1 for media in message.media if not media.is_reply)
+    reply_media = sum(1 for media in message.media if media.is_reply)
+    if regular_media:
+        lines.append(f"Attachments: {regular_media} file(s) to follow.")
+    if reply_media:
+        lines.append(f"Reply attachments: {reply_media} file(s) to follow.")
+    return "\n".join(lines)
 
 
 async def _with_floodwait(
@@ -454,6 +554,15 @@ async def _send_with_backoff(
     **kwargs,
 ) -> None:
     await _with_floodwait(client.send_message, entity, message, **kwargs)
+
+
+async def _send_file_with_backoff(
+    client: TelegramClient,
+    entity: int | str,
+    file_path: Path,
+    **kwargs,
+) -> None:
+    await _with_floodwait(client.send_file, entity, file=str(file_path), **kwargs)
 
 
 async def _reply(event: events.NewMessage.Event, text: str) -> None:

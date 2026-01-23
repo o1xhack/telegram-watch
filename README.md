@@ -47,7 +47,7 @@ python -m pip install -e .
    - `[target.tracked_user_aliases]` (optional ID→alias mapping for nicer reports)
    - `control.control_chat_id` (where digests + commands live)
    - `storage.db_path` & `storage.media_dir`
-   - `reporting.reports_dir` & `reporting.summary_interval_minutes`
+   - `reporting.reports_dir` & `reporting.summary_interval_minutes` (controls how often reports are delivered)
 
    See `docs/configuration.md` for step-by-step instructions on gathering Telegram IDs (including private groups without invite links), filling the credential fields, and choosing safe local storage paths.
 
@@ -85,7 +85,7 @@ Run mode:
 
 - Listens to the target chat; when tracked users send messages, stores them (text, replies, media snapshots).
 - Captures reply context, including quoted text and media, so reports show the referenced screenshots.
-- Schedules a periodic summary (default every 120 minutes) that posts a digest + local report path to the `control_chat_id`.
+- At each `summary_interval_minutes` window (30 min, 120 min, etc.), it generates the HTML report, uploads the file to the control chat, then sequentially pushes every tracked message (text + reply info + media) from that window.
 - Listens for commands **from your own account** inside the control chat:
   - `/help`
   - `/last <user_id|@username> [N]`
