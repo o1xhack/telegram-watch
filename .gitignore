@@ -221,6 +221,10 @@ logs/
 *.sqlite3
 *.db
 
+# request tracking docs stay local
+docs/requests/*
+!docs/requests/.gitkeep
+
 # macOS
 .DS_Store
 

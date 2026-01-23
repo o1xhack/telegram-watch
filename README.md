@@ -10,11 +10,25 @@ Telegram user-account watcher built with Telethon. The tool logs in with your ow
 
 ## Installation
 
+Choose **either** a built-in `venv` or a Conda environment; both work as long as Python ≥ 3.11 is active.
+
+### Option A: `python -m venv`
+
 ```bash
 python3.11 -m venv .venv
 . .venv/bin/activate
 pip install -e .
 ```
+
+### Option B: Conda
+
+```bash
+conda create -n tgwatch python=3.11
+conda activate tgwatch
+python -m pip install -e .
+```
+
+> Tip: keep exactly one environment active when running commands. The prompt should show either `(.venv)` or `(tgwatch)` before `python -m tgwatch ...`.
 
 ## Configuration
 
@@ -34,7 +48,7 @@ pip install -e .
    - `storage.db_path` & `storage.media_dir`
    - `reporting.reports_dir` & `reporting.summary_interval_minutes`
 
-   See `docs/configuration.md` for step-by-step instructions on gathering Telegram IDs, filling the credential fields, and choosing safe local storage paths.
+   See `docs/configuration.md` for step-by-step instructions on gathering Telegram IDs (including private groups without invite links), filling the credential fields, and choosing safe local storage paths.
 
 > ⚠️ Never commit `config.toml`, session files, `data/`, or `reports/`. These contain private information.
 

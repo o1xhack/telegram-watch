@@ -24,13 +24,32 @@ First run (`python -m tgwatch run ...`) will prompt for the Telegram login code 
 
 Field | What it represents | How to find it
 ----- | ------------------ | -------------
-`target_chat_id` | Numeric ID of the group/channel you want to monitor. Supergroups/channels start with `-100`. | In Telegram Desktop/Mobile open the chat → tap the title → copy the invite link → send it to `@userinfobot`, `@getidsbot`, or `@RawDataBot` and it will reply with `chat_id = -100...`. You can also forward any message from the chat to `@userinfobot`.
+`target_chat_id` | Numeric ID of the group/channel you want to monitor. Supergroups/channels start with `-100`. | In Telegram Desktop/Mobile open the chat → tap the title → copy the invite link → send it to `@userinfobot`, `@getidsbot`, or `@RawDataBot` and it will reply with `chat_id = -100...`. For private chats with no shareable link, see “Private group without invite link” below.
 `tracked_user_ids` | List of integer user IDs to watch inside the target chat. | Ask each target user to send a message to `@userinfobot` and forward you the ID, or invite `@userinfobot` to the chat and reply `/whois @username`. Replace the sample list (`[11111111, 22222222]`) with the actual integers.
 
 Tips:
 
 - Always keep the IDs numeric; quoted usernames will not work.
 - Include only the users you care about; everything else is ignored.
+
+### Private group without invite link
+
+If you joined a private group and cannot create invite links, you still have a few options to reveal the numeric `target_chat_id`:
+
+1. **Forward a message to an ID bot**  
+   From Telegram (desktop or mobile) forward any recent message from the private group to `@userinfobot` or `@RawDataBot`. Forwarded messages keep the original chat metadata and the bot will respond with `Chat ID: -100...` even if it cannot join the group. Make sure “Hide sender name” is disabled when forwarding so the metadata stays intact.
+2. **Temporarily add an ID bot**  
+   If forwarding is disabled, ask an admin to temporarily invite `@userinfobot` (or similar) into the group. Run `/mychatid` or `/whois` inside the group, note the numeric ID, then remove the bot.
+3. **Use Telegram Desktop’s developer info**  
+   The Telegram Desktop (Qt) app for macOS and Windows exposes “Experimental settings”. On macOS, open **Telegram Desktop** (the square blue icon from [desktop.telegram.org](https://desktop.telegram.org/), not the App Store “Telegram” app), then:
+   1. `Telegram Desktop` menu → **Preferences…** (`⌘,`).
+   2. Go to **Advanced** → scroll to **Experimental settings** → toggle **Enable experimental features** → turn on **Show message IDs**.
+   3. Go back to the chat, right-click any message → **Copy message link**.  
+      The link looks like `https://t.me/c/1234567890/55`; convert it to `-1001234567890` and write it into `target_chat_id`.
+
+   If you only have the native macOS “Telegram” app (round icon) and no Advanced menu, either install Telegram Desktop from the link above or use the web client (`https://web.telegram.org/k/`) where the address bar shows `#-1001234567890` when the group is open.
+
+Pick whichever option your group permissions allow. Once you have the numeric ID, fill `target.target_chat_id` in `config.toml`.
 
 ## 4. Control chat (`[control]`)
 
