@@ -49,6 +49,11 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="Window spec (e.g. 10m, 2h, or ISO timestamp)",
     )
+    once_parser.add_argument(
+        "--push",
+        action="store_true",
+        help="Also push the generated report/messages to the control chat",
+    )
 
     subparsers.add_parser(
         "run",
@@ -72,7 +77,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.command == "once":
         config = _load_config_or_exit(parser, args.config)
         since = parse_since_spec(args.since, now=utc_now())
-        return asyncio.run(_run_once_command(config, since))
+        return asyncio.run(_run_once_command(config, since, push=args.push))
     elif args.command == "run":
         config = _load_config_or_exit(parser, args.config)
         return asyncio.run(_run_daemon_command(config))
@@ -87,8 +92,8 @@ def _load_config_or_exit(parser: argparse.ArgumentParser, path: Path) -> Config:
         parser.error(str(exc))
 
 
-async def _run_once_command(config, since):
-    report_path = await run_once(config, since)
+async def _run_once_command(config, since, push: bool = False):
+    report_path = await run_once(config, since, push=push)
     logging.getLogger(__name__).info("Report generated at %s", report_path)
     return 0
 

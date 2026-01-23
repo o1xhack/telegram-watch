@@ -29,7 +29,7 @@ from .timeutils import parse_since_spec, utc_now
 logger = logging.getLogger(__name__)
 
 
-async def run_once(config: Config, since: datetime) -> Path:
+async def run_once(config: Config, since: datetime, push: bool = False) -> Path:
     """Fetch messages for a window, store them, and return report path."""
     client = _build_client(config)
     await client.start()
@@ -43,6 +43,20 @@ async def run_once(config: Config, since: datetime) -> Path:
             persist_message(conn, message, media)
         stored = fetch_messages_between(conn, config.target.tracked_user_ids, since, until)
     report_path = generate_report(stored, config, since, until)
+    if push:
+        client = _build_client(config)
+        await client.start()
+        try:
+            await _send_report_bundle(
+                client,
+                config,
+                stored,
+                since,
+                until,
+                report_path,
+            )
+        finally:
+            await client.disconnect()
     return report_path
 
 

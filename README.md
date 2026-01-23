@@ -71,6 +71,8 @@ Fetch tracked messages from the last window (e.g., 2 hours), save them to the DB
 
 ```bash
 python -m tgwatch once --config config.toml --since 2h
+# 加上 --push 可以把同一窗口的报告和消息推送到控制聊天，便于测试
+python -m tgwatch once --config config.toml --since 2h --push
 ```
 
 ### Run (daemon)
