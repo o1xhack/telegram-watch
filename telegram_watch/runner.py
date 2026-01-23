@@ -524,9 +524,11 @@ async def _send_media_for_message(
 
 def _format_control_message(message: DbMessage, config: Config) -> str:
     label = config.describe_user(message.sender_id)
+    local_ts = message.date.astimezone(config.reporting.timezone)
+    msg_label = f"msg #{message.message_id}" if message.message_id else "msg"
     lines = [
         f"{label}",
-        f"Time: {message.date.isoformat()} — message #{message.message_id}",
+        f"Time: {local_ts.isoformat()} — {msg_label}",
     ]
     if message.replied_sender_id:
         reply_label = config.describe_user(message.replied_sender_id)

@@ -58,6 +58,9 @@ def _render_html(
     grouped = _group_by_user(messages)
     until_text = until.isoformat() if until else "now"
     duration = until - since if until else utc_now() - since
+    tz = config.reporting.timezone
+    since_local = since.astimezone(tz)
+    until_local = (until or utc_now()).astimezone(tz)
     header = f"""
     <html>
     <head>
@@ -67,7 +70,7 @@ def _render_html(
     </head>
     <body>
         <h1>telegram-watch report</h1>
-        <div class="meta">Window: {escape(since.isoformat())} → {escape(until_text)} ({escape(humanize_timedelta(duration))})</div>
+        <div class="meta">Window: {escape(since_local.isoformat())} → {escape(until_local.isoformat())} ({escape(humanize_timedelta(duration))})</div>
     """
     body_parts = [header]
     if not grouped:
@@ -109,9 +112,10 @@ def _render_message(message: DbMessage, config: Config, report_dir: Path) -> str
         )
     regular_media = [media for media in message.media if not media.is_reply]
     media_block = _render_media_gallery(regular_media, report_dir)
+    local_ts = message.date.astimezone(config.reporting.timezone)
     return (
         '<div class="message">'
-        f'<div class="timestamp">{escape(message.date.isoformat())} — message #{message.message_id}</div>'
+        f'<div class="timestamp">{escape(local_ts.isoformat())} — msg #{message.message_id}</div>'
         f"{text_html}"
         f"{reply_block}"
         f"{media_block}"

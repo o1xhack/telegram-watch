@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, List, Mapping
 from types import MappingProxyType
+from zoneinfo import ZoneInfo
 
 try:  # pragma: no cover - Python 3.11+ always hits first branch
     import tomllib
@@ -46,6 +47,7 @@ class StorageConfig:
 class ReportingConfig:
     reports_dir: Path
     summary_interval_minutes: int
+    timezone: ZoneInfo
 
 
 @dataclass(frozen=True)
@@ -156,7 +158,16 @@ def _parse_reporting(raw: dict[str, Any], base_dir: Path) -> ReportingConfig:
     summary = _require_int(summary, "reporting.summary_interval_minutes")
     if summary <= 0:
         raise ConfigError("reporting.summary_interval_minutes must be > 0")
-    return ReportingConfig(reports_dir=reports_dir, summary_interval_minutes=summary)
+    tz_name = raw.get("timezone", "UTC")
+    try:
+        timezone = ZoneInfo(tz_name)
+    except Exception as exc:  # pragma: no cover - zoneinfo raises generic exceptions
+        raise ConfigError(f"Invalid timezone '{tz_name}'") from exc
+    return ReportingConfig(
+        reports_dir=reports_dir,
+        summary_interval_minutes=summary,
+        timezone=timezone,
+    )
 
 
 def _require_fields(raw: dict[str, Any], section: str, fields: Iterable[str]) -> None:
