@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from html import escape
 from pathlib import Path
 from typing import Awaitable, Callable, Sequence, TypeVar
 
@@ -484,7 +485,7 @@ async def _send_messages_to_control(
 ) -> None:
     for message in messages:
         text = _format_control_message(message, config)
-        await _send_with_backoff(client, control_chat_id, text)
+        await _send_with_backoff(client, control_chat_id, text, parse_mode="html")
         await _send_media_for_message(client, control_chat_id, message, config)
 
 
@@ -524,22 +525,22 @@ async def _send_media_for_message(
 
 def _format_control_message(message: DbMessage, config: Config) -> str:
     label = config.describe_user(message.sender_id)
-    local_ts = message.date.astimezone(config.reporting.timezone)
+    local_ts = _format_timestamp_local(message.date, config)
     msg_label = f"msg #{message.message_id}" if message.message_id else "msg"
     lines = [
-        f"{label}",
-        f"Time: {local_ts.isoformat()} — {msg_label}",
+        f"<b>{escape(label)}</b>",
+        f"Time: {escape(local_ts)} — {escape(msg_label)}",
     ]
     if message.replied_sender_id:
         reply_label = config.describe_user(message.replied_sender_id)
-        reply_line = f"↩ Reply to {reply_label}"
+        reply_line = f"↩ Reply to {escape(reply_label)}"
         if message.replied_date:
-            reply_line += f" at {message.replied_date.isoformat()}"
+            reply_line += f" at {escape(_format_timestamp_local(message.replied_date, config))}"
         lines.append(reply_line)
         if message.replied_text:
-            lines.append(f"Quoted: {message.replied_text}")
-    lines.append("Content:")
-    lines.append(message.text or "<no text>")
+            lines.append(f"Quoted: {escape(message.replied_text)}")
+    body_text = escape(message.text) if message.text else "<i>no text</i>"
+    lines.append(f"<b>Content:</b> {body_text}")
     regular_media = sum(1 for media in message.media if not media.is_reply)
     reply_media = sum(1 for media in message.media if media.is_reply)
     if regular_media:
@@ -547,6 +548,21 @@ def _format_control_message(message: DbMessage, config: Config) -> str:
     if reply_media:
         lines.append(f"Reply attachments: {reply_media} file(s) to follow.")
     return "\n".join(lines)
+
+
+def _format_timestamp_local(dt: datetime, config: Config) -> str:
+    local = dt.astimezone(config.reporting.timezone)
+    tzname = local.tzname() or _offset_label(local.utcoffset())
+    return local.strftime("%Y.%m.%d %H:%M:%S ") + f"({tzname})"
+
+
+def _offset_label(offset: timedelta | None) -> str:
+    if offset is None:
+        return "UTC"
+    total_minutes = int(offset.total_seconds() // 60)
+    hours, minutes = divmod(abs(total_minutes), 60)
+    sign = "+" if total_minutes >= 0 else "-"
+    return f"UTC{sign}{hours:02d}:{minutes:02d}"
 
 
 async def _with_floodwait(

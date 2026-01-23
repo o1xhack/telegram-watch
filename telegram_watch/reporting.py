@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from html import escape
 from pathlib import Path
 from typing import Sequence
@@ -59,8 +59,8 @@ def _render_html(
     until_text = until.isoformat() if until else "now"
     duration = until - since if until else utc_now() - since
     tz = config.reporting.timezone
-    since_local = since.astimezone(tz)
-    until_local = (until or utc_now()).astimezone(tz)
+    since_local = _format_timestamp(since, tz)
+    until_local = _format_timestamp(until or utc_now(), tz)
     header = f"""
     <html>
     <head>
@@ -70,7 +70,7 @@ def _render_html(
     </head>
     <body>
         <h1>telegram-watch report</h1>
-        <div class="meta">Window: {escape(since_local.isoformat())} → {escape(until_local.isoformat())} ({escape(humanize_timedelta(duration))})</div>
+        <div class="meta">Window: {escape(since_local)} → {escape(until_local)} ({escape(humanize_timedelta(duration))})</div>
     """
     body_parts = [header]
     if not grouped:
@@ -112,10 +112,10 @@ def _render_message(message: DbMessage, config: Config, report_dir: Path) -> str
         )
     regular_media = [media for media in message.media if not media.is_reply]
     media_block = _render_media_gallery(regular_media, report_dir)
-    local_ts = message.date.astimezone(config.reporting.timezone)
+    local_ts = _format_timestamp(message.date, config.reporting.timezone)
     return (
         '<div class="message">'
-        f'<div class="timestamp">{escape(local_ts.isoformat())} — msg #{message.message_id}</div>'
+        f'<div class="timestamp">{escape(local_ts)} — msg #{message.message_id}</div>'
         f"{text_html}"
         f"{reply_block}"
         f"{media_block}"
@@ -132,6 +132,21 @@ def _render_media_gallery(media_items: list[DbMedia], report_dir: Path) -> str:
         rel_url = os.path.relpath(abs_path, report_dir)
         figures.append(f'<img src="{escape(rel_url)}" alt="media {media.media_index}">')
     return '<div class="media-gallery">' + "".join(figures) + "</div>"
+
+
+def _format_timestamp(dt: datetime, tz: timezone) -> str:
+    local = dt.astimezone(tz)
+    tzname = local.tzname() or _offset_label(local.utcoffset())
+    return local.strftime("%Y.%m.%d %H:%M:%S ") + f"({tzname})"
+
+
+def _offset_label(offset: timedelta | None) -> str:
+    if offset is None:
+        return "UTC"
+    total_minutes = int(offset.total_seconds() // 60)
+    hours, minutes = divmod(abs(total_minutes), 60)
+    sign = "+" if total_minutes >= 0 else "-"
+    return f"UTC{sign}{hours:02d}:{minutes:02d}"
 
 
 def _group_by_user(messages: Sequence[DbMessage]) -> dict[int, list[DbMessage]]:

@@ -21,3 +21,4 @@ media_dir = "data/media"
 [reporting]
 reports_dir = "reports"
 summary_interval_minutes = 120
+timezone = "UTC"  # e.g., "Asia/Shanghai", "America/Los_Angeles", "America/New_York", "Asia/Tokyo"
