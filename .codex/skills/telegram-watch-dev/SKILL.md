@@ -34,6 +34,9 @@ When using this skill, ALWAYS follow this workflow:
 4) Build order for MVP code work
 - Implement in this order: `doctor` -> `once` -> `run`.
 
+4.1) README localization rule
+- Any time you add or update content in `README.md`, you must apply the same change (or equivalent translation) to every localized README (`README.zh-Hans.md`, `README.zh-Hant.md`, `README.ja.md`). Language switch links at the top must also stay in sync.
+
 5) After each change set, run validations
 - python -m telegram_watch doctor --config config.toml
 - python -m telegram_watch once --config config.toml --since 10m
