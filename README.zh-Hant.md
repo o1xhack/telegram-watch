@@ -12,6 +12,7 @@
 - **內嵌媒體預覽**：報告中的圖片以 Base64 方式內嵌，即使在 Telegram 或手機上直接開啟 HTML 也能看到圖片。
 - **心跳與告警**：若 2 小時沒有任何活動會自動送出 “Watcher is still running”；若程式異常結束，會把錯誤摘要推送到控制群並保留終端紀錄。
 - **保留策略**：透過 `reporting.retention_days`（預設 30 天）定期清掉舊報告/媒體；設定超過 180 天時啟動前會先提示確認。
+- **Bark 推播（選用）**：填入 Bark Key 後，報告/心跳/錯誤都會以 “Telegram Watch” 分組推送到手機。
 
 以下章節說明安裝、設定與常用命令。
 
@@ -63,6 +64,19 @@ python -m pip install -e .
    - `reporting.reports_dir` 與 `reporting.summary_interval_minutes`（報告頻率）
    - `reporting.timezone`（如 `Asia/Taipei`、`America/Los_Angeles` 等）
    - `reporting.retention_days`（報告/媒體保留天數，預設 30，超過 180 會先提醒）
+   - `[notifications] bark_key`（可選 Bark Key，可同步手機推播）
+
+### Bark Key 取得方式
+
+1. 在手機安裝 Bark App，開啟後點齒輪圖示 → 「複製設備碼」，即可取得 `xxxxxxxxxxxxxxxxxxxxxxxx` 形式的 Key。
+2. 在 `config.toml` 中寫入：
+
+   ```toml
+   [notifications]
+   bark_key = "你的BarkKey"
+   ```
+
+3. 執行 `tgwatch run ...` 後，報告/心跳/錯誤會以 “Telegram Watch” 群組推播到 Bark。
 
 更詳細的欄位說明、如何取得群/人 ID、目錄建議，可參考 `docs/configuration.md`。
 

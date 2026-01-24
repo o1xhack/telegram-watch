@@ -12,6 +12,7 @@
 - **内联媒体**：报告中的图片以 Base64 形式内嵌，即使在 Telegram 或手机中直接打开 HTML 也能看到图片。
 - **心跳与告警**：连续 2 小时无活动则发送 “Watcher is still running”；若程序异常退出，会把错误摘要推送到控制群，同时保留终端日志。
 - **保留策略**：通过 `reporting.retention_days`（默认 30 天）定期清理旧报告/媒体；设置超过 180 天会在启动前提示确认。
+- **可选 Bark 推送**：配置 Bark Key 后，报告/心跳/错误都会以 “Telegram Watch” 分组推送到手机。
 
 以下章节介绍安装、配置与常用命令。
 
@@ -63,6 +64,19 @@ python -m pip install -e .
    - `reporting.reports_dir` 与 `reporting.summary_interval_minutes`（报告频率）
    - `reporting.timezone`（如 `Asia/Shanghai`、`America/Los_Angeles` 等）
    - `reporting.retention_days`（报告/媒体保留天数，默认 30，超过 180 会提示确认）
+   - `[notifications] bark_key`（可选的 Bark Key，用于手机推送）
+
+### Bark Key 获取指南
+
+1. 在手机上安装 Bark App，打开后点击右上角齿轮 → “复制设备码”，得到 `xxxxxxxxxxxxxxxxxxxxxxxx` 的 Key。
+2. 在 `config.toml` 中填入：
+
+   ```toml
+   [notifications]
+   bark_key = "你的BarkKey"
+   ```
+
+3. 启动 `tgwatch run ...`，报告/心跳/错误就会以 “Telegram Watch” 分组推送到 Bark。
 
 详细步骤、如何获取群 ID/用户 ID、路径选择等请参考 `docs/configuration.md`。
 

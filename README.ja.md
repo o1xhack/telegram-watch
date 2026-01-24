@@ -12,6 +12,7 @@ Mac 上で完結する Telegram ウォッチャー（Telethon 製）。主な特
 - **インライン画像プレビュー**：HTML 内の画像は Base64 で埋め込み、Telegram やモバイル端末で直接レポートを開いても表示できます。
 - **ハートビートとアラート**：2 時間アクティビティがない場合は「Watcher is still running」を送信し、未処理の例外で終了する際もエラー概要をコントロールチャットに通知します。
 - **保持ポリシー**：`reporting.retention_days`（デフォルト 30 日）でレポート/メディアを自動削除。180 日を超える設定では起動前に確認メッセージを表示します。
+- **Bark 連携（任意）**：Bark Key を設定すると、レポート・ハートビート・エラー発生時に “Telegram Watch” グループでプッシュ通知を受け取れます。
 
 以下ではインストール、設定、コマンドの使い方を説明します。
 
@@ -63,6 +64,19 @@ python -m pip install -e .
    - `reporting.reports_dir`, `reporting.summary_interval_minutes`（レポートの間隔）
    - `reporting.timezone`（例：`Asia/Tokyo`、`America/Los_Angeles` 等）
    - `reporting.retention_days`（レポート/メディアの保持日数。デフォルト 30、180 を超えると警告）
+   - `[notifications] bark_key`（任意の Bark Key。設定するとスマホ通知を受け取れます）
+
+### Bark Key の取得方法
+
+1. Bark アプリをインストールして開き、右上の歯車 → 「コピー」からデバイスキーを取得します（例 `xxxxxxxxxxxxxxxxxxxxxxxx`）。
+2. `config.toml` に以下のように入力：
+
+   ```toml
+   [notifications]
+   bark_key = "あなたのBarkKey"
+   ```
+
+3. `tgwatch run ...` を実行すると、レポート/ハートビート/エラーが “Telegram Watch” グループで Bark に届きます。
 
 詳しい取得方法や入力例は `docs/configuration.md` を参照してください。
 

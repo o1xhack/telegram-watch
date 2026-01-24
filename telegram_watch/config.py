@@ -52,12 +52,18 @@ class ReportingConfig:
 
 
 @dataclass(frozen=True)
+class NotificationConfig:
+    bark_key: str | None
+
+
+@dataclass(frozen=True)
 class Config:
     telegram: TelegramConfig
     target: TargetConfig
     control: ControlConfig
     storage: StorageConfig
     reporting: ReportingConfig
+    notifications: NotificationConfig
 
     @property
     def tracked_users_set(self) -> set[int]:
@@ -83,6 +89,7 @@ def load_config(path: Path) -> Config:
     control_cfg = _parse_control(data.get("control") or {})
     storage_cfg = _parse_storage(data.get("storage") or {}, base_dir)
     reporting_cfg = _parse_reporting(data.get("reporting") or {}, base_dir)
+    notifications_cfg = _parse_notifications(data.get("notifications") or {})
 
     return Config(
         telegram=telegram_cfg,
@@ -90,6 +97,7 @@ def load_config(path: Path) -> Config:
         control=control_cfg,
         storage=storage_cfg,
         reporting=reporting_cfg,
+        notifications=notifications_cfg,
     )
 
 
@@ -174,6 +182,15 @@ def _parse_reporting(raw: dict[str, Any], base_dir: Path) -> ReportingConfig:
         timezone=timezone,
         retention_days=retention,
     )
+
+
+def _parse_notifications(raw: dict[str, Any]) -> NotificationConfig:
+    bark_key = raw.get("bark_key")
+    if bark_key is not None:
+        bark_key = str(bark_key).strip()
+        if not bark_key:
+            bark_key = None
+    return NotificationConfig(bark_key=bark_key)
 
 
 def _require_fields(raw: dict[str, Any], section: str, fields: Iterable[str]) -> None:

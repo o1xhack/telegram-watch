@@ -17,6 +17,7 @@ from telethon.tl.custom import message as custom_message
 
 from .config import Config
 from .links import build_message_link
+from .notifications import send_bark_notification
 from .reporting import generate_report
 from .storage import (
     DbMessage,
@@ -537,6 +538,11 @@ class _HeartbeatLoop:
                 "Watcher is still running",
             )
             self.tracker.mark_heartbeat(now)
+            await send_bark_notification(
+                self.config.notifications,
+                "Watcher heartbeat",
+                "Watcher is still running",
+            )
         except Exception as exc:  # pragma: no cover
             logger.warning("Failed to send heartbeat: %s", exc)
 
@@ -584,6 +590,11 @@ async def _send_report_bundle(
     await _send_messages_to_control(client, config, control, messages)
     if tracker:
         tracker.mark_activity()
+    await send_bark_notification(
+        config.notifications,
+        "Report ready",
+        f"{len(messages)} messages",
+    )
 
 
 async def _send_messages_to_control(
@@ -781,6 +792,11 @@ async def _send_error_notification(
             client,
             config.control.control_chat_id,
             message,
+        )
+        await send_bark_notification(
+            config.notifications,
+            "Watcher error",
+            summary,
         )
     except Exception as notify_exc:  # pragma: no cover
         logger.warning("Failed to send error notification: %s", notify_exc)
