@@ -632,7 +632,7 @@ async def _send_media_for_message(
 ) -> None:
     if not message.media:
         return
-    sender_label = config.describe_user(message.sender_id)
+    sender_label = _format_control_user_label(message.sender_id, config)
     for media in message.media:
         file_path = Path(media.file_path)
         if not file_path.exists():
@@ -640,7 +640,7 @@ async def _send_media_for_message(
             continue
         if media.is_reply:
             reply_label = (
-                config.describe_user(message.replied_sender_id)
+                _format_control_user_label(message.replied_sender_id, config)
                 if message.replied_sender_id
                 else "unknown"
             )
@@ -659,7 +659,7 @@ async def _send_media_for_message(
 
 
 def _format_control_message(message: DbMessage, config: Config) -> str:
-    label = config.describe_user(message.sender_id)
+    label = _format_control_user_label(message.sender_id, config)
     local_ts = _format_timestamp_local(message.date, config)
     msg_link = build_message_link(config.target.target_chat_id, message.message_id)
     msg_label_text = f"MSG {message.message_id}" if message.message_id else "MSG"
@@ -681,7 +681,7 @@ def _format_control_message(message: DbMessage, config: Config) -> str:
     if reply_media:
         lines.append(f"Reply attachments: {reply_media} file(s) to follow.")
     if message.replied_sender_id:
-        reply_label = config.describe_user(message.replied_sender_id)
+        reply_label = _format_control_user_label(message.replied_sender_id, config)
         reply_line = f"↩ Reply to {escape(reply_label)}"
         if message.replied_date:
             reply_line += f" at {escape(_format_timestamp_local(message.replied_date, config))}"
@@ -712,7 +712,36 @@ def _format_user_counts(
 def _format_timestamp_local(dt: datetime, config: Config) -> str:
     local = dt.astimezone(config.reporting.timezone)
     tzname = local.tzname() or _offset_label(local.utcoffset())
+    custom_format = config.control.time_format
+    if custom_format:
+        return _apply_time_format(custom_format, local, tzname)
     return local.strftime("%Y.%m.%d %H:%M:%S ") + f"({tzname})"
+
+
+def _format_control_user_label(user_id: int, config: Config) -> str:
+    alias = config.target.tracked_user_aliases.get(user_id)
+    if not alias:
+        return str(user_id)
+    if config.control.show_user_id:
+        return f"{alias} ({user_id})"
+    return alias
+
+
+def _apply_time_format(format_string: str, local: datetime, tzname: str) -> str:
+    tokens = {
+        "YYYY": f"{local.year:04d}",
+        "YY": f"{local.year % 100:02d}",
+        "MM": f"{local.month:02d}",
+        "DD": f"{local.day:02d}",
+        "HH": f"{local.hour:02d}",
+        "mm": f"{local.minute:02d}",
+        "SS": f"{local.second:02d}",
+        "ZZ": tzname,
+    }
+    result = format_string
+    for token in sorted(tokens, key=len, reverse=True):
+        result = result.replace(token, tokens[token])
+    return result
 
 
 def _offset_label(offset: timedelta | None) -> str:

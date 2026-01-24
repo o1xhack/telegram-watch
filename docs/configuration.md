@@ -69,6 +69,21 @@ Pick whichever option your group permissions allow. Once you have the numeric ID
 Field | Description | Recommendation
 ----- | ----------- | --------------
 `control_chat_id` | Where tgwatch posts summaries and where you send commands (`/last`, `/since`, etc.). | Use your personal “Saved Messages” dialog or a private group that only you control. Retrieve the numeric ID the same way as the target chat (bots like `@userinfobot` show `chat_id` in replies). Make sure your own Telegram account is a member so commands are accepted.
+`show_user_id` | Whether control-chat messages show `Username (ID)` or only the username. | `true` (show IDs)
+`time_format` | Optional custom time format for control-chat messages. Leave empty to keep the default format. | `""`
+
+`time_format` supports the following case-sensitive tokens:
+
+Token | Meaning
+----- | -------
+`YYYY` | 4-digit year
+`YY` | 2-digit year
+`MM` | Month (01-12)
+`DD` | Day of month (01-31)
+`HH` | Hour (00-23)
+`mm` | Minute (00-59)
+`SS` | Second (00-59)
+`ZZ` | Timezone name/offset (e.g., `UTC`, `UTC+08:00`)
 
 ## 5. Local storage (`[storage]`)
 

@@ -123,3 +123,30 @@ def test_aliases_must_match_tracked_users(tmp_path):
     )
     with pytest.raises(ConfigError):
         load_config(cfg_path)
+
+
+def test_control_time_format_and_show_id(tmp_path):
+    cfg_path = write_config(
+        tmp_path,
+        """
+        [telegram]
+        api_id = 42
+        api_hash = "abcdefghijk"
+
+        [target]
+        target_chat_id = -1001
+        tracked_user_ids = [123]
+
+        [control]
+        control_chat_id = -1002
+        show_user_id = false
+        time_format = "YY-MM-DD HH:mm:SS (ZZ)"
+
+        [storage]
+        db_path = "data/app.sqlite3"
+        media_dir = "data/media"
+        """,
+    )
+    config = load_config(cfg_path)
+    assert config.control.show_user_id is False
+    assert config.control.time_format == "YY-MM-DD HH:mm:SS (ZZ)"

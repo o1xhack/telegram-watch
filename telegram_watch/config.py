@@ -35,6 +35,8 @@ class TargetConfig:
 @dataclass(frozen=True)
 class ControlConfig:
     control_chat_id: int
+    show_user_id: bool
+    time_format: str | None
 
 
 @dataclass(frozen=True)
@@ -151,7 +153,17 @@ def _parse_target(raw: dict[str, Any]) -> TargetConfig:
 def _parse_control(raw: dict[str, Any]) -> ControlConfig:
     _require_fields(raw, "control", ("control_chat_id",))
     control_chat_id = _require_int(raw["control_chat_id"], "control.control_chat_id")
-    return ControlConfig(control_chat_id=control_chat_id)
+    show_user_id = _require_bool(raw.get("show_user_id", True), "control.show_user_id")
+    time_format = raw.get("time_format")
+    if time_format is not None:
+        time_format = str(time_format).strip()
+        if not time_format:
+            time_format = None
+    return ControlConfig(
+        control_chat_id=control_chat_id,
+        show_user_id=show_user_id,
+        time_format=time_format,
+    )
 
 
 def _parse_storage(raw: dict[str, Any], base_dir: Path) -> StorageConfig:
@@ -205,6 +217,14 @@ def _require_int(value: Any, label: str) -> int:
     except (TypeError, ValueError) as exc:
         raise ConfigError(f"{label} must be an integer") from exc
     return parsed
+
+
+def _require_bool(value: Any, label: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and value in (0, 1):
+        return bool(value)
+    raise ConfigError(f"{label} must be a boolean")
 
 
 def _resolve_path(raw_path: Any, base_dir: Path) -> Path:

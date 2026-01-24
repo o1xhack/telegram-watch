@@ -13,6 +13,8 @@ tracked_user_ids = [11111111, 22222222]
 
 [control]
 control_chat_id = -1009876543210
+show_user_id = true
+time_format = "" # Optional: e.g. "YYYY.MM.DD HH:mm:SS (ZZ)"
 
 [storage]
 db_path = "data/tgwatch.sqlite3"
