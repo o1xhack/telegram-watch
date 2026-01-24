@@ -11,6 +11,7 @@ import os
 
 from .config import Config
 from .storage import DbMessage, DbMedia
+from .links import build_message_link
 from .timeutils import humanize_timedelta, utc_now
 
 
@@ -113,9 +114,13 @@ def _render_message(message: DbMessage, config: Config, report_dir: Path) -> str
     regular_media = [media for media in message.media if not media.is_reply]
     media_block = _render_media_gallery(regular_media, report_dir)
     local_ts = _format_timestamp(message.date, config.reporting.timezone)
+    msg_link = build_message_link(config.target.target_chat_id, message.message_id)
+    msg_label = f"MSG {message.message_id}"
+    if msg_link:
+        msg_label = f'<a href="{escape(msg_link)}" target="_blank">{escape(msg_label)}</a>'
     return (
         '<div class="message">'
-        f'<div class="timestamp">{escape(local_ts)} — msg #{message.message_id}</div>'
+        f'<div class="timestamp">{escape(local_ts)} — {msg_label}</div>'
         f"{text_html}"
         f"{reply_block}"
         f"{media_block}"

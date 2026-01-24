@@ -31,6 +31,7 @@ Tips:
 
 - Always keep the IDs numeric; quoted usernames will not work.
 - Include only the users you care about; everything else is ignored.
+- For supergroups，记得保留 `-100` 前缀，这样报告里的 `MSG` 链接才能跳回 Telegram。
 
 ### Optional aliases
 

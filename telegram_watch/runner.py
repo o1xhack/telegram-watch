@@ -15,6 +15,7 @@ from telethon.tl.custom import message as custom_message
 
 from .config import Config
 from .reporting import generate_report
+from .links import build_message_link
 from .storage import (
     DbMessage,
     StoredMedia,
@@ -526,19 +527,25 @@ async def _send_media_for_message(
 def _format_control_message(message: DbMessage, config: Config) -> str:
     label = config.describe_user(message.sender_id)
     local_ts = _format_timestamp_local(message.date, config)
-    msg_label = f"msg #{message.message_id}" if message.message_id else "msg"
+    msg_link = build_message_link(config.target.target_chat_id, message.message_id)
+    msg_label_text = f"MSG {message.message_id}" if message.message_id else "MSG"
+    if msg_link:
+        msg_label = f"<a href=\"{escape(msg_link)}\">{escape(msg_label_text)}</a>"
+    else:
+        msg_label = escape(msg_label_text)
     lines = [
         f"<b>{escape(label)}</b>",
-        f"Time: {escape(local_ts)} — {escape(msg_label)}",
+        f"Time: {escape(local_ts)} — {msg_label}",
     ]
     if message.replied_sender_id:
         reply_label = config.describe_user(message.replied_sender_id)
         reply_line = f"↩ Reply to {escape(reply_label)}"
         if message.replied_date:
             reply_line += f" at {escape(_format_timestamp_local(message.replied_date, config))}"
-        lines.append(reply_line)
+        quote_lines = [reply_line]
         if message.replied_text:
-            lines.append(f"Quoted: {escape(message.replied_text)}")
+            quote_lines.append(escape(message.replied_text))
+        lines.append('<blockquote>' + '<br>'.join(quote_lines) + '</blockquote>')
     body_text = escape(message.text) if message.text else "<i>no text</i>"
     lines.append(f"<b>Content:</b> {body_text}")
     regular_media = sum(1 for media in message.media if not media.is_reply)
