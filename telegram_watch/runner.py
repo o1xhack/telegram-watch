@@ -537,24 +537,24 @@ def _format_control_message(message: DbMessage, config: Config) -> str:
         f"<b>{escape(label)}</b>",
         f"Time: {escape(local_ts)} — {msg_label}",
     ]
-    quote_block = ""
-    if message.replied_sender_id:
-        reply_label = config.describe_user(message.replied_sender_id)
-        reply_line = f"↩ Reply to {escape(reply_label)}"
-        if message.replied_date:
-            reply_line += f" at {escape(_format_timestamp_local(message.replied_date, config))}"
-        quote_lines = [reply_line, escape(message.replied_text) if message.replied_text else "<i>no text</i>"]
-        quote_block = '<blockquote>' + '<br>'.join(quote_lines) + '</blockquote>'
     body_text = escape(message.text) if message.text else "<i>no text</i>"
     lines.append(f"<b>Content:</b> {body_text}")
+    quote_blocks: list[str] = []
     regular_media = sum(1 for media in message.media if not media.is_reply)
     reply_media = sum(1 for media in message.media if media.is_reply)
     if regular_media:
         lines.append(f"Attachments: {regular_media} file(s) to follow.")
     if reply_media:
         lines.append(f"Reply attachments: {reply_media} file(s) to follow.")
-    if quote_block:
-        lines.append(quote_block)
+    if message.replied_sender_id:
+        reply_label = config.describe_user(message.replied_sender_id)
+        reply_line = f"↩ Reply to {escape(reply_label)}"
+        if message.replied_date:
+            reply_line += f" at {escape(_format_timestamp_local(message.replied_date, config))}"
+        quote_blocks.append(f"<blockquote>{reply_line}</blockquote>")
+        reply_text = escape(message.replied_text) if message.replied_text else "<i>no text</i>"
+        quote_blocks.append(f"<blockquote>{reply_text}</blockquote>")
+    lines.extend(quote_blocks)
     return "\n".join(lines)
 
 
