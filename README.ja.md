@@ -28,6 +28,16 @@ Mac 上で完結する Telegram ウォッチャー（Telethon 製）。主な特
 
 `python -m venv` か Conda のどちらかを使用してください（Python 3.11 以上）。
 
+### 方法 0：タグ付きリリースをインストール（推奨）
+
+固定された Git タグから安定版をインストールします：
+
+```bash
+pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.1.0"
+
+python -m tgwatch --help
+```
+
 ### 方法 A：`python -m venv`
 
 ```bash

@@ -28,6 +28,16 @@
 
 可选择系统自带的 `venv` 或 Conda，确保 Python ≥ 3.11。
 
+### 方式 0：安装固定版本（推荐）
+
+直接从 Git Tag 安装稳定版本：
+
+```bash
+pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.1.0"
+
+python -m tgwatch --help
+```
+
 ### 方式 A：`python -m venv`
 
 ```bash

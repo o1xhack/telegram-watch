@@ -28,6 +28,16 @@ The sections below cover installation, configuration, and usage.
 
 Choose **either** a built-in `venv` or a Conda environment; both work as long as Python ≥ 3.11 is active.
 
+### Option 0: Install a tagged release (recommended)
+
+Install a fixed version from a Git tag so you always get the exact release:
+
+```bash
+pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.1.0"
+
+python -m tgwatch --help
+```
+
 ### Option A: `python -m venv`
 
 ```bash
