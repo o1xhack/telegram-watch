@@ -34,7 +34,12 @@ from .timeutils import parse_since_spec, utc_now
 logger = logging.getLogger(__name__)
 
 
-async def run_once(config: Config, since: datetime, push: bool = False) -> Path:
+async def run_once(
+    config: Config,
+    since: datetime,
+    push: bool = False,
+    since_label: str | None = None,
+) -> Path:
     """Fetch messages for a window, store them, and return report path."""
     client = _build_client(config)
     await client.start()
@@ -59,6 +64,9 @@ async def run_once(config: Config, since: datetime, push: bool = False) -> Path:
                 since,
                 until,
                 report_path,
+                bark_context=(
+                    f"(since {since_label})" if since_label else None
+                ),
             )
         finally:
             await client.disconnect()
@@ -485,6 +493,7 @@ class _SummaryLoop:
             now,
             report,
             tracker=self._tracker,
+            bark_context=f"({_format_interval_label(self.config.reporting.summary_interval_minutes)})",
         )
 
 
@@ -577,6 +586,7 @@ async def _send_report_bundle(
     until: datetime | None,
     report_path: Path,
     tracker: "_ActivityTracker | None" = None,
+    bark_context: str | None = None,
 ) -> None:
     window = f"{since.isoformat()} → {(until.isoformat() if until else 'now')}"
     caption = f"tgwatch report\nWindow: {window}\nMessages: {len(messages)}"
@@ -590,10 +600,15 @@ async def _send_report_bundle(
     await _send_messages_to_control(client, config, control, messages)
     if tracker:
         tracker.mark_activity()
+    counts_text = _format_user_counts(messages, config)
+    title = "Report Ready"
+    if bark_context:
+        title = f"{title} {bark_context}"
+    body = counts_text or f"{len(messages)} messages"
     await send_bark_notification(
         config.notifications,
-        "Report ready",
-        f"{len(messages)} messages",
+        title,
+        body,
     )
 
 
@@ -677,6 +692,23 @@ def _format_control_message(message: DbMessage, config: Config) -> str:
     return "\n".join(lines)
 
 
+def _format_user_counts(
+    messages: Sequence[DbMessage],
+    config: Config,
+) -> str:
+    if not messages:
+        return ""
+    counter: dict[int, int] = {}
+    for msg in messages:
+        counter[msg.sender_id] = counter.get(msg.sender_id, 0) + 1
+    parts = []
+    for user_id, count in counter.items():
+        label = config.describe_user(user_id)
+        suffix = "message" if count == 1 else "messages"
+        parts.append(f"{label} {count} {suffix}")
+    return ", ".join(parts)
+
+
 def _format_timestamp_local(dt: datetime, config: Config) -> str:
     local = dt.astimezone(config.reporting.timezone)
     tzname = local.tzname() or _offset_label(local.utcoffset())
@@ -690,6 +722,13 @@ def _offset_label(offset: timedelta | None) -> str:
     hours, minutes = divmod(abs(total_minutes), 60)
     sign = "+" if total_minutes >= 0 else "-"
     return f"UTC{sign}{hours:02d}:{minutes:02d}"
+
+
+def _format_interval_label(minutes: int) -> str:
+    if minutes % 60 == 0:
+        hours = minutes // 60
+        return f"{hours}H"
+    return f"{minutes}M"
 
 
 async def _with_floodwait(

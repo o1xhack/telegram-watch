@@ -78,7 +78,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.command == "once":
         config = _load_config_or_exit(parser, args.config)
         since = parse_since_spec(args.since, now=utc_now())
-        return asyncio.run(_run_once_command(config, since, push=args.push))
+        return asyncio.run(
+            _run_once_command(config, since, since_label=args.since, push=args.push)
+        )
     elif args.command == "run":
         config = _load_config_or_exit(parser, args.config)
         if not _confirm_retention(config.reporting.retention_days):
@@ -96,8 +98,8 @@ def _load_config_or_exit(parser: argparse.ArgumentParser, path: Path) -> Config:
         parser.error(str(exc))
 
 
-async def _run_once_command(config, since, push: bool = False):
-    report_path = await run_once(config, since, push=push)
+async def _run_once_command(config, since, since_label=None, push: bool = False):
+    report_path = await run_once(config, since, push=push, since_label=since_label)
     logging.getLogger(__name__).info("Report generated at %s", report_path)
     return 0
 
