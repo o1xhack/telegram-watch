@@ -703,7 +703,7 @@ def _format_user_counts(
         counter[msg.sender_id] = counter.get(msg.sender_id, 0) + 1
     parts = []
     for user_id, count in counter.items():
-        label = config.describe_user(user_id)
+        label = config.describe_user(user_id).split(" (")[0]
         suffix = "message" if count == 1 else "messages"
         parts.append(f"{label} {count} {suffix}")
     return ", ".join(parts)
