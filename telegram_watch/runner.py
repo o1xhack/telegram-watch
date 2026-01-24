@@ -543,9 +543,7 @@ def _format_control_message(message: DbMessage, config: Config) -> str:
         reply_line = f"↩ Reply to {escape(reply_label)}"
         if message.replied_date:
             reply_line += f" at {escape(_format_timestamp_local(message.replied_date, config))}"
-        quote_lines = [reply_line]
-        if message.replied_text:
-            quote_lines.append(escape(message.replied_text))
+        quote_lines = [reply_line, escape(message.replied_text) if message.replied_text else "<i>no text</i>"]
         quote_block = '<blockquote>' + '<br>'.join(quote_lines) + '</blockquote>'
     body_text = escape(message.text) if message.text else "<i>no text</i>"
     lines.append(f"<b>Content:</b> {body_text}")
