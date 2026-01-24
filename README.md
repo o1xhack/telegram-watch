@@ -1,6 +1,19 @@
 # telegram-watch
 
-Telegram user-account watcher built with Telethon. The tool logs in with your own account (not a Bot) and watches a single target chat for a fixed list of tracked user IDs. Messages, media, and reply context are stored in a local SQLite database and rendered into HTML reports on a configurable schedule.
+[English](README.md) | [简体中文](README.zh-Hans.md) | [繁體中文](README.zh-Hant.md) | [日本語](README.ja.md)
+
+## Highlights
+
+Fully local Telegram watcher powered by Telethon. Key highlights:
+
+- **User-level monitoring** – logs in with your own account (not a Bot) and watches a target supergroup/channel for a fixed list of tracked user IDs.
+- **Rich capture** – stores text, reply chains, and media snapshots into SQLite plus a local media folder.
+- **Automated reporting** – on each configurable window (5–120 minutes, etc.) it builds a full HTML report, pushes the file to the control chat, then streams every tracked message (with clickable `MSG` links back to Telegram).
+- **Inline media preview** – HTML embeds images as Base64, so reports opened inside Telegram or on mobile still show pictures.
+- **Heartbeat + alerts** – if no activity occurs for 2 hours the control chat receives “Watcher is still running”; unhandled exceptions trigger an error notification before exit.
+- **Retention controls** – `reporting.retention_days` (default 30) keeps report/media folders in check and purges old ones; values >180 prompt for confirmation.
+
+The sections below cover installation, configuration, and usage.
 
 ## Prerequisites
 
