@@ -23,6 +23,7 @@ Mac 上で完結する Telegram ウォッチャー（Telethon 製）。主な特
 - macOS、Python 3.11 以上
 - [my.telegram.org](https://my.telegram.org/) で取得した Telegram API ID / hash（ユーザーアカウント用）
 - ローカルストレージのみ（クラウドサービス不要）
+- 常時監視する場合は、常にオンライン状態を保てる Mac（例: Mac mini）を用意すると安定します
 
 ## インストール
 

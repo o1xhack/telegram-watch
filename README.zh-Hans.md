@@ -23,6 +23,7 @@
 - macOS，Python 3.11+
 - 在 [my.telegram.org](https://my.telegram.org/) 获取的 Telegram API ID / hash（必须是用户账号）
 - 本地存储，无需任何云服务
+- 如果需要长期运行守护模式，建议使用可以常开联网的 Mac（如 Mac mini 等）
 
 ## 安装
 

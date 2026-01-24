@@ -23,6 +23,7 @@ The sections below cover installation, configuration, and usage.
 - macOS with Python 3.11+
 - Telegram API ID + hash from [my.telegram.org](https://my.telegram.org/) (user account access)
 - Local storage only (no cloud services required)
+- A Mac that can stay online for long periods if you run the daemon (a Mac mini or any always-on machine works best)
 
 ## Installation
 
