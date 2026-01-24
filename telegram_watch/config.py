@@ -48,6 +48,7 @@ class ReportingConfig:
     reports_dir: Path
     summary_interval_minutes: int
     timezone: ZoneInfo
+    retention_days: int
 
 
 @dataclass(frozen=True)
@@ -158,6 +159,10 @@ def _parse_reporting(raw: dict[str, Any], base_dir: Path) -> ReportingConfig:
     summary = _require_int(summary, "reporting.summary_interval_minutes")
     if summary <= 0:
         raise ConfigError("reporting.summary_interval_minutes must be > 0")
+    retention = raw.get("retention_days", 30)
+    retention = _require_int(retention, "reporting.retention_days")
+    if retention <= 0:
+        raise ConfigError("reporting.retention_days must be > 0")
     tz_name = raw.get("timezone", "UTC")
     try:
         timezone = ZoneInfo(tz_name)
@@ -167,6 +172,7 @@ def _parse_reporting(raw: dict[str, Any], base_dir: Path) -> ReportingConfig:
         reports_dir=reports_dir,
         summary_interval_minutes=summary,
         timezone=timezone,
+        retention_days=retention,
     )
 
 

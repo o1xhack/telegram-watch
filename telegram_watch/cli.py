@@ -80,6 +80,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return asyncio.run(_run_once_command(config, since, push=args.push))
     elif args.command == "run":
         config = _load_config_or_exit(parser, args.config)
+        if not _confirm_retention(config.reporting.retention_days):
+            logging.getLogger(__name__).warning("Run cancelled by user.")
+            return 1
         return asyncio.run(_run_daemon_command(config))
     else:  # pragma: no cover - argparse ensures command
         parser.error(f"Unknown command {args.command}")
@@ -101,6 +104,20 @@ async def _run_once_command(config, since, push: bool = False):
 async def _run_daemon_command(config):
     await run_daemon(config)
     return 0
+
+
+def _confirm_retention(retention_days: int) -> bool:
+    if retention_days <= 180:
+        return True
+    prompt = (
+        f"reporting.retention_days is set to {retention_days} days. "
+        "This may consume significant disk space. Continue? [y/N]: "
+    )
+    try:
+        answer = input(prompt)
+    except EOFError:
+        return False
+    return answer.strip().lower() in {"y", "yes"}
 
 
 if __name__ == "__main__":  # pragma: no cover

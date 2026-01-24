@@ -49,6 +49,7 @@ python -m pip install -e .
    - `storage.db_path` & `storage.media_dir`
    - `reporting.reports_dir` & `reporting.summary_interval_minutes` (controls how often reports are delivered)
    - `reporting.timezone` (optional, e.g., `Asia/Shanghai`, `America/Los_Angeles`, `America/New_York`, `Asia/Tokyo`)
+   - `reporting.retention_days` (defaults to 30; when `run` starts, reports older than this many days are deleted. Values > 180 prompt for confirmation.)
 
    See `docs/configuration.md` for step-by-step instructions on gathering Telegram IDs (including private groups without invite links), filling the credential fields, and choosing safe local storage paths.
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from base64 import b64encode
 from html import escape
 from pathlib import Path
 from typing import Sequence
@@ -134,8 +135,12 @@ def _render_media_gallery(media_items: list[DbMedia], report_dir: Path) -> str:
     figures = []
     for media in media_items:
         abs_path = Path(media.file_path).resolve()
-        rel_url = os.path.relpath(abs_path, report_dir)
-        figures.append(f'<img src="{escape(rel_url)}" alt="media {media.media_index}">')
+        data_uri = _media_to_data_uri(abs_path, media.mime_type)
+        if not data_uri:
+            rel_url = escape(os.path.relpath(abs_path, report_dir))
+            figures.append(f'<img src="{rel_url}" alt="media {media.media_index}">')
+        else:
+            figures.append(f'<img src="{data_uri}" alt="media {media.media_index}">')
     return '<div class="media-gallery">' + "".join(figures) + "</div>"
 
 
@@ -152,6 +157,27 @@ def _offset_label(offset: timedelta | None) -> str:
     hours, minutes = divmod(abs(total_minutes), 60)
     sign = "+" if total_minutes >= 0 else "-"
     return f"UTC{sign}{hours:02d}:{minutes:02d}"
+
+
+def _media_to_data_uri(path: Path, mime_type: str | None) -> str | None:
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+    mime = mime_type or _guess_mime(path)
+    if not mime or not mime.startswith("image/"):
+        return None
+    encoded = b64encode(data).decode("ascii")
+    return f"data:{mime};base64,{encoded}"
+
+
+def _guess_mime(path: Path) -> str | None:
+    try:
+        import mimetypes
+    except ImportError:  # pragma: no cover - stdlib always available
+        return None
+    mime, _ = mimetypes.guess_type(str(path))
+    return mime
 
 
 def _group_by_user(messages: Sequence[DbMessage]) -> dict[int, list[DbMessage]]:

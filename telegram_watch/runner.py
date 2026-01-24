@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import shutil
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from html import escape
@@ -63,6 +64,10 @@ async def run_once(config: Config, since: datetime, push: bool = False) -> Path:
 
 
 async def run_daemon(config: Config) -> None:
+    _purge_old_reports(
+        config.reporting.reports_dir,
+        config.reporting.retention_days,
+    )
     """Run watcher daemon."""
     client = _build_client(config)
     await client.start()
@@ -445,6 +450,10 @@ class _SummaryLoop:
             logger.info("No tracked messages since last summary.")
             return
         report = generate_report(messages, self.config, since, now)
+        _purge_old_reports(
+            self.config.reporting.reports_dir,
+            self.config.reporting.retention_days,
+        )
         await _send_report_bundle(
             self.client,
             self.config,
@@ -636,3 +645,21 @@ async def _reply(event: events.NewMessage.Event, text: str) -> None:
         text,
         reply_to=event.message.id,
     )
+
+
+def _purge_old_reports(report_dir: Path, retention_days: int) -> None:
+    if retention_days <= 0:
+        return
+    if not report_dir.exists():
+        return
+    cutoff = (utc_now() - timedelta(days=retention_days)).date()
+    for entry in report_dir.iterdir():
+        if not entry.is_dir():
+            continue
+        try:
+            folder_date = datetime.strptime(entry.name, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if folder_date <= cutoff:
+            logger.info("Removing expired reports: %s", entry)
+            shutil.rmtree(entry, ignore_errors=True)

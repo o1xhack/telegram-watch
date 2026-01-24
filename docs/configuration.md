@@ -86,6 +86,7 @@ Field | Description | Default
 `reports_dir` | Root folder for generated HTML reports. Subdirectories follow `reports/YYYY-MM-DD/HHMM/index.html`. | `reports`
 `summary_interval_minutes` | How often the `run` command builds a report and pushes it to the control chat. Set `30` for every half hour, or any other positive integer (recommended ≥ 10 to avoid FloodWait). | `120` (2 hours)
 `timezone` | IANA timezone string (examples: `Asia/Shanghai`, `America/Los_Angeles`, `America/New_York`, `Asia/Tokyo`). Determines how timestamps appear in reports and control-chat pushes. Falls back to `UTC` if omitted. | `UTC`
+`retention_days` | How many days of reports/media to keep when `run` is active. Older directories are deleted automatically at startup and after each summary. Setting values > 180 triggers a confirmation prompt to warn about disk usage. | `30`
 
 During each window, tgwatch writes the HTML report to `reports_dir`, uploads that file to the control chat, and then streams the window内的每条消息（文本 + 引用 + 媒体）到控制聊天，方便在手机端查看。Reply sections in each report include any quoted images/documents so you can see the full context without opening Telegram.
 

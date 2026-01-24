@@ -22,3 +22,4 @@ media_dir = "data/media"
 reports_dir = "reports"
 summary_interval_minutes = 120
 timezone = "UTC"  # e.g., "Asia/Shanghai", "America/Los_Angeles", "America/New_York", "Asia/Tokyo"
+retention_days = 30
