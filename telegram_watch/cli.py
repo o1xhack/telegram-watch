@@ -70,6 +70,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
+    logging.getLogger("telethon").setLevel(logging.WARNING)
     if args.command == "doctor":
         config = _load_config_or_exit(parser, args.config)
         run_doctor(config)
