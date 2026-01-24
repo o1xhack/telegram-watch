@@ -90,6 +90,7 @@ Run mode:
 - Listens to the target chat; when tracked users send messages, stores them (text, replies, media snapshots).
 - Captures reply context, including quoted text and media, so reports show the referenced screenshots.
 - At each `summary_interval_minutes` window (30 min, 120 min, etc.), it generates the HTML report, uploads the file to the control chat, then sequentially pushes every tracked message (text + reply info + media) from that window.
+- Reports embed media as Base64 data URIs so the file stays self-contained when opened in Telegram (files grow with large images).
 - Listens for commands **from your own account** inside the control chat:
   - `/help`
   - `/last <user_id|@username> [N]`

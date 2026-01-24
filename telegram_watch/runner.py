@@ -5,8 +5,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import shutil
+import traceback
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from html import escape
 from pathlib import Path
 from typing import Awaitable, Callable, Sequence, TypeVar
@@ -15,8 +16,8 @@ from telethon import TelegramClient, events, errors
 from telethon.tl.custom import message as custom_message
 
 from .config import Config
-from .reporting import generate_report
 from .links import build_message_link
+from .reporting import generate_report
 from .storage import (
     DbMessage,
     StoredMedia,
@@ -70,14 +71,16 @@ async def run_daemon(config: Config) -> None:
     )
     """Run watcher daemon."""
     client = _build_client(config)
+    activity_tracker = _ActivityTracker()
     await client.start()
     me = await client.get_me()
     self_user_id = int(me.id)
     logger.info("Logged in as %s", getattr(me, "username", self_user_id))
 
-    summary_loop = _SummaryLoop(config, client)
+    summary_loop = _SummaryLoop(config, client, activity_tracker)
+    heartbeat_loop = _HeartbeatLoop(config, client, activity_tracker)
     target_handler = _TargetHandler(config, client)
-    control_handler = _ControlHandler(config, client, self_user_id)
+    control_handler = _ControlHandler(config, client, self_user_id, activity_tracker)
 
     client.add_event_handler(
         target_handler.handle,
@@ -89,9 +92,14 @@ async def run_daemon(config: Config) -> None:
     )
 
     summary_loop.start()
+    heartbeat_loop.start()
     try:
         await client.run_until_disconnected()
+    except Exception as exc:
+        await _send_error_notification(client, config, exc)
+        raise
     finally:
+        await heartbeat_loop.stop()
         await summary_loop.stop()
         await client.disconnect()
 
@@ -278,10 +286,17 @@ class _TargetHandler:
 
 
 class _ControlHandler:
-    def __init__(self, config: Config, client: TelegramClient, owner_id: int):
+    def __init__(
+        self,
+        config: Config,
+        client: TelegramClient,
+        owner_id: int,
+        tracker: "_ActivityTracker",
+    ):
         self.config = config
         self.client = client
         self.owner_id = owner_id
+        self._tracker = tracker
 
     async def handle(self, event: events.NewMessage.Event) -> None:
         if int(getattr(event.message, "sender_id", 0)) != self.owner_id:
@@ -378,6 +393,7 @@ class _ControlHandler:
             since,
             until,
             report,
+            tracker=self._tracker,
         )
 
     async def _resolve_user(self, arg: str) -> int:
@@ -409,12 +425,18 @@ _HELP_TEXT = (
 
 
 class _SummaryLoop:
-    def __init__(self, config: Config, client: TelegramClient):
+    def __init__(
+        self,
+        config: Config,
+        client: TelegramClient,
+        tracker: "_ActivityTracker",
+    ):
         self.config = config
         self.client = client
         self._stop = asyncio.Event()
         self._task: asyncio.Task | None = None
         self._last_summary = utc_now()
+        self._tracker = tracker
 
     def start(self) -> None:
         self._task = asyncio.create_task(self._run())
@@ -461,7 +483,81 @@ class _SummaryLoop:
             since,
             now,
             report,
+            tracker=self._tracker,
         )
+
+
+class _HeartbeatLoop:
+    _CHECK_INTERVAL = 300  # seconds
+    _IDLE_SECONDS = 2 * 60 * 60
+
+    def __init__(
+        self,
+        config: Config,
+        client: TelegramClient,
+        tracker: "_ActivityTracker",
+    ):
+        self.config = config
+        self.client = client
+        self.tracker = tracker
+        self._stop = asyncio.Event()
+        self._task: asyncio.Task | None = None
+
+    def start(self) -> None:
+        self._task = asyncio.create_task(self._run())
+
+    async def stop(self) -> None:
+        self._stop.set()
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+
+    async def _run(self) -> None:
+        while not self._stop.is_set():
+            try:
+                await asyncio.wait_for(
+                    self._stop.wait(), timeout=self._CHECK_INTERVAL
+                )
+            except asyncio.TimeoutError:
+                await self._maybe_send_heartbeat()
+            except asyncio.CancelledError:
+                break
+
+    async def _maybe_send_heartbeat(self) -> None:
+        now = utc_now()
+        if not self.tracker.should_send_heartbeat(now, self._IDLE_SECONDS):
+            return
+        try:
+            await _send_with_backoff(
+                self.client,
+                self.config.control.control_chat_id,
+                "Watcher is still running",
+            )
+            self.tracker.mark_heartbeat(now)
+        except Exception as exc:  # pragma: no cover
+            logger.warning("Failed to send heartbeat: %s", exc)
+
+
+class _ActivityTracker:
+    def __init__(self) -> None:
+        now = utc_now()
+        self.last_activity = now
+        self.last_heartbeat_sent: datetime | None = None
+
+    def mark_activity(self) -> None:
+        self.last_activity = utc_now()
+        self.last_heartbeat_sent = None
+
+    def should_send_heartbeat(self, now: datetime, idle_seconds: int) -> bool:
+        if (now - self.last_activity) < timedelta(seconds=idle_seconds):
+            return False
+        return self.last_heartbeat_sent is None
+
+    def mark_heartbeat(self, when: datetime) -> None:
+        self.last_heartbeat_sent = when
 
 
 T = TypeVar("T")
@@ -474,6 +570,7 @@ async def _send_report_bundle(
     since: datetime,
     until: datetime | None,
     report_path: Path,
+    tracker: "_ActivityTracker | None" = None,
 ) -> None:
     window = f"{since.isoformat()} → {(until.isoformat() if until else 'now')}"
     caption = f"tgwatch report\nWindow: {window}\nMessages: {len(messages)}"
@@ -485,6 +582,8 @@ async def _send_report_bundle(
         caption=caption,
     )
     await _send_messages_to_control(client, config, control, messages)
+    if tracker:
+        tracker.mark_activity()
 
 
 async def _send_messages_to_control(
@@ -663,3 +762,25 @@ def _purge_old_reports(report_dir: Path, retention_days: int) -> None:
         if folder_date <= cutoff:
             logger.info("Removing expired reports: %s", entry)
             shutil.rmtree(entry, ignore_errors=True)
+
+
+async def _send_error_notification(
+    client: TelegramClient,
+    config: Config,
+    exc: Exception,
+) -> None:
+    summary = "".join(
+        traceback.format_exception_only(type(exc), exc)
+    ).strip()
+    message = (
+        "Watcher encountered an error and will stop:\n"
+        f"{summary}"
+    )
+    try:
+        await _send_with_backoff(
+            client,
+            config.control.control_chat_id,
+            message,
+        )
+    except Exception as notify_exc:  # pragma: no cover
+        logger.warning("Failed to send error notification: %s", notify_exc)
