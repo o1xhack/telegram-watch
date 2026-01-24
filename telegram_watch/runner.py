@@ -537,6 +537,7 @@ def _format_control_message(message: DbMessage, config: Config) -> str:
         f"<b>{escape(label)}</b>",
         f"Time: {escape(local_ts)} — {msg_label}",
     ]
+    quote_block = ""
     if message.replied_sender_id:
         reply_label = config.describe_user(message.replied_sender_id)
         reply_line = f"↩ Reply to {escape(reply_label)}"
@@ -545,7 +546,7 @@ def _format_control_message(message: DbMessage, config: Config) -> str:
         quote_lines = [reply_line]
         if message.replied_text:
             quote_lines.append(escape(message.replied_text))
-        lines.append('<blockquote>' + '<br>'.join(quote_lines) + '</blockquote>')
+        quote_block = '<blockquote>' + '<br>'.join(quote_lines) + '</blockquote>'
     body_text = escape(message.text) if message.text else "<i>no text</i>"
     lines.append(f"<b>Content:</b> {body_text}")
     regular_media = sum(1 for media in message.media if not media.is_reply)
@@ -554,6 +555,8 @@ def _format_control_message(message: DbMessage, config: Config) -> str:
         lines.append(f"Attachments: {regular_media} file(s) to follow.")
     if reply_media:
         lines.append(f"Reply attachments: {reply_media} file(s) to follow.")
+    if quote_block:
+        lines.append(quote_block)
     return "\n".join(lines)
 
 
