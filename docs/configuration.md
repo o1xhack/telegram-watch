@@ -90,13 +90,20 @@ Field | Description | Default
 
 During each window, tgwatch writes the HTML report to `reports_dir`, uploads that file to the control chat, and then streams the window内的每条消息（文本 + 引用 + 媒体）到控制聊天，方便在手机端查看。Reply sections in each report include any quoted images/documents so you can see the full context without opening Telegram.
 
-## 7. Notifications (`[notifications]`)
+## 7. Display (`[display]`)
+
+Field | Description | Default
+----- | ----------- | -------
+`show_ids` | Whether control-chat pushes append `(ID)` to aliases/usernames. | `true`
+`time_format` | Timestamp format for control-chat pushes (`strftime` syntax, e.g., `%Y.%m.%d %H:%M:%S (%Z)`). Leave blank to use the default. | `%Y.%m.%d %H:%M:%S (%Z)`
+
+## 8. Notifications (`[notifications]`)
 
 Field | Description | Default
 ----- | ----------- | -------
 `bark_key` | Optional Bark key for push notifications. When set, reports, heartbeats, and error alerts are mirrored to your phone under the `Telegram Watch` group. | _(empty)_
 
-## 8. Validate the configuration
+## 9. Validate the configuration
 
 After editing `config.toml`, run:
 

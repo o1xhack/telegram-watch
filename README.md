@@ -34,7 +34,7 @@ Choose **either** a built-in `venv` or a Conda environment; both work as long as
 Install a fixed version from a Git tag so you always get the exact release:
 
 ```bash
-pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.1.0"
+pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.1.1"
 
 python -m tgwatch --help
 ```
@@ -78,6 +78,7 @@ python -m pip install -e .
    - `reporting.timezone` (optional, e.g., `Asia/Shanghai`, `America/Los_Angeles`, `America/New_York`, `Asia/Tokyo`)
    - `reporting.retention_days` (defaults to 30; when `run` starts, reports older than this many days are deleted. Values > 180 prompt for confirmation.)
    - `[notifications] bark_key` (optional Bark key for mirror notifications)
+   - `[display] show_ids` (default `true`) & `time_format` (strftime string) control how control-chat pushes render names/timestamps
 
 ### Bark key quick guide
 
@@ -151,6 +152,10 @@ pytest
 - Does not log API hashes, phone numbers, or chat contents.
 - Session + DB + media directories are `.gitignore`d; keep secrets local.
 - Flood-wait handling/backoff is included for login, downloads, and bot responses.
+
+## Changelog
+
+Release notes (newest at the top, older entries further down) live in [docs/CHANGELOG.md](docs/CHANGELOG.md). Each entry links to the request ID so you can see which features or fixes landed in a given version.
 
 ## License
 

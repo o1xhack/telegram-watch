@@ -34,7 +34,7 @@ Mac 上で完結する Telegram ウォッチャー（Telethon 製）。主な特
 固定された Git タグから安定版をインストールします：
 
 ```bash
-pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.1.0"
+pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.1.1"
 
 python -m tgwatch --help
 ```
@@ -78,6 +78,7 @@ python -m pip install -e .
    - `reporting.timezone`（例：`Asia/Tokyo`、`America/Los_Angeles` 等）
    - `reporting.retention_days`（レポート/メディアの保持日数。デフォルト 30、180 を超えると警告）
    - `[notifications] bark_key`（任意の Bark Key。設定するとスマホ通知を受け取れます）
+   - `[display] show_ids`（ID を表示するか、デフォルト true）と `time_format`（strftime 形式）でコントロールチャットの名前/時刻表示を調整
 
 ### Bark Key の取得方法
 

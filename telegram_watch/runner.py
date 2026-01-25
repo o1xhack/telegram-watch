@@ -15,7 +15,7 @@ from typing import Awaitable, Callable, Sequence, TypeVar
 from telethon import TelegramClient, events, errors
 from telethon.tl.custom import message as custom_message
 
-from .config import Config
+from .config import Config, DEFAULT_TIME_FORMAT
 from .links import build_message_link
 from .notifications import send_bark_notification
 from .reporting import generate_report
@@ -492,8 +492,8 @@ class _SummaryLoop:
             since,
             now,
             report,
-            tracker=self._tracker,
-            bark_context=f"({_format_interval_label(self.config.reporting.summary_interval_minutes)})",
+        tracker=self._tracker,
+        bark_context=f"({_format_interval_label(self.config.reporting.summary_interval_minutes)})",
         )
 
 
@@ -632,7 +632,7 @@ async def _send_media_for_message(
 ) -> None:
     if not message.media:
         return
-    sender_label = config.describe_user(message.sender_id)
+    sender_label = config.format_user_label(message.sender_id)
     for media in message.media:
         file_path = Path(media.file_path)
         if not file_path.exists():
@@ -640,7 +640,7 @@ async def _send_media_for_message(
             continue
         if media.is_reply:
             reply_label = (
-                config.describe_user(message.replied_sender_id)
+                config.format_user_label(message.replied_sender_id)
                 if message.replied_sender_id
                 else "unknown"
             )
@@ -659,7 +659,7 @@ async def _send_media_for_message(
 
 
 def _format_control_message(message: DbMessage, config: Config) -> str:
-    label = config.describe_user(message.sender_id)
+    label = config.format_user_label(message.sender_id)
     local_ts = _format_timestamp_local(message.date, config)
     msg_link = build_message_link(config.target.target_chat_id, message.message_id)
     msg_label_text = f"MSG {message.message_id}" if message.message_id else "MSG"
@@ -681,7 +681,7 @@ def _format_control_message(message: DbMessage, config: Config) -> str:
     if reply_media:
         lines.append(f"Reply attachments: {reply_media} file(s) to follow.")
     if message.replied_sender_id:
-        reply_label = config.describe_user(message.replied_sender_id)
+        reply_label = config.format_user_label(message.replied_sender_id)
         reply_line = f"↩ Reply to {escape(reply_label)}"
         if message.replied_date:
             reply_line += f" at {escape(_format_timestamp_local(message.replied_date, config))}"
@@ -703,7 +703,7 @@ def _format_user_counts(
         counter[msg.sender_id] = counter.get(msg.sender_id, 0) + 1
     parts = []
     for user_id, count in counter.items():
-        label = config.describe_user(user_id).split(" (")[0]
+        label = config.format_user_label(user_id, include_id=config.display.show_ids)
         suffix = "message" if count == 1 else "messages"
         parts.append(f"{label} {count} {suffix}")
     return ", ".join(parts)
@@ -711,8 +711,11 @@ def _format_user_counts(
 
 def _format_timestamp_local(dt: datetime, config: Config) -> str:
     local = dt.astimezone(config.reporting.timezone)
-    tzname = local.tzname() or _offset_label(local.utcoffset())
-    return local.strftime("%Y.%m.%d %H:%M:%S ") + f"({tzname})"
+    fmt = config.display.time_format or DEFAULT_TIME_FORMAT
+    try:
+        return local.strftime(fmt)
+    except Exception:  # pragma: no cover - fallback for invalid format
+        return local.strftime(DEFAULT_TIME_FORMAT)
 
 
 def _offset_label(offset: timedelta | None) -> str:

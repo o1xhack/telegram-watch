@@ -34,7 +34,7 @@
 直接从 Git Tag 安装稳定版本：
 
 ```bash
-pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.1.0"
+pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.1.1"
 
 python -m tgwatch --help
 ```
@@ -78,6 +78,7 @@ python -m pip install -e .
    - `reporting.timezone`（如 `Asia/Shanghai`、`America/Los_Angeles` 等）
    - `reporting.retention_days`（报告/媒体保留天数，默认 30，超过 180 会提示确认）
    - `[notifications] bark_key`（可选的 Bark Key，用于手机推送）
+   - `[display] show_ids`（是否显示 ID，默认 true）与 `time_format`（strftime 格式字符串）控制控制群推送的姓名/时间展示
 
 ### Bark Key 获取指南
 

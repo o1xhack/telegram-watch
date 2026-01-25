@@ -8,6 +8,10 @@ Created: YYYY-MM-DD  # 与文件名中的日期一致
 ## Summary
 一句话描述要做什么（非技术语言）。
 
+## Release Impact
+- 预计版本号：`x.y.z -> x.y.z`
+- 预告 changelog 文案（英文）：`...`
+
 ## Motivation
 为什么要做？解决什么痛点？
 
