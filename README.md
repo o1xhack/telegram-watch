@@ -78,6 +78,7 @@ python -m pip install -e .
    - `reporting.timezone` (optional, e.g., `Asia/Shanghai`, `America/Los_Angeles`, `America/New_York`, `Asia/Tokyo`)
    - `reporting.retention_days` (defaults to 30; when `run` starts, reports older than this many days are deleted. Values > 180 prompt for confirmation.)
    - `[notifications] bark_key` (optional Bark key for mirror notifications)
+   - `[display] show_ids` (default `true`) & `time_format` (strftime string) control how control-chat pushes render names/timestamps
 
 ### Bark key quick guide
 

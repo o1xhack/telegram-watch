@@ -24,5 +24,9 @@ summary_interval_minutes = 120
 timezone = "UTC"  # e.g., "Asia/Shanghai", "America/Los_Angeles", "America/New_York", "Asia/Tokyo"
 retention_days = 30
 
+[display]
+show_ids = true
+time_format = "%Y.%m.%d %H:%M:%S (%Z)"
+
 [notifications]
 bark_key = ""  # optional Bark key for push notifications

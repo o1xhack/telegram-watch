@@ -33,6 +33,7 @@
 ## Repo conventions
 - Python 3.11+; type hints.
 - Prefer small modules; keep async code isolated.
+- Default working branch for feature development is `dev`; reserve `main` for release-ready merges.
 
 ## Requirements workflow (default behavior)
 - The source of truth for work is `docs/requests/`.

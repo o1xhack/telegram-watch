@@ -78,6 +78,7 @@ python -m pip install -e .
    - `reporting.timezone`（如 `Asia/Taipei`、`America/Los_Angeles` 等）
    - `reporting.retention_days`（報告/媒體保留天數，預設 30，超過 180 會先提醒）
    - `[notifications] bark_key`（可選 Bark Key，可同步手機推播）
+   - `[display] show_ids`（是否顯示 ID，預設 true）與 `time_format`（strftime 格式字串）可調整控制群推送的名字/時間格式
 
 ### Bark Key 取得方式
 

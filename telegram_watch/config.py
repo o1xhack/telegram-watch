@@ -18,6 +18,9 @@ class ConfigError(RuntimeError):
     """Raised when a config file is invalid."""
 
 
+DEFAULT_TIME_FORMAT = "%Y.%m.%d %H:%M:%S (%Z)"
+
+
 @dataclass(frozen=True)
 class TelegramConfig:
     api_id: int
@@ -52,6 +55,12 @@ class ReportingConfig:
 
 
 @dataclass(frozen=True)
+class DisplayConfig:
+    show_ids: bool
+    time_format: str
+
+
+@dataclass(frozen=True)
 class NotificationConfig:
     bark_key: str | None
 
@@ -63,6 +72,7 @@ class Config:
     control: ControlConfig
     storage: StorageConfig
     reporting: ReportingConfig
+    display: DisplayConfig
     notifications: NotificationConfig
 
     @property
@@ -73,6 +83,14 @@ class Config:
         alias = self.target.tracked_user_aliases.get(user_id)
         if alias:
             return f"{alias} ({user_id})"
+        return str(user_id)
+
+    def format_user_label(self, user_id: int, include_id: bool | None = None) -> str:
+        if include_id is None:
+            include_id = self.display.show_ids
+        alias = self.target.tracked_user_aliases.get(user_id)
+        if alias:
+            return f"{alias} ({user_id})" if include_id else alias
         return str(user_id)
 
 
@@ -89,6 +107,7 @@ def load_config(path: Path) -> Config:
     control_cfg = _parse_control(data.get("control") or {})
     storage_cfg = _parse_storage(data.get("storage") or {}, base_dir)
     reporting_cfg = _parse_reporting(data.get("reporting") or {}, base_dir)
+    display_cfg = _parse_display(data.get("display") or {})
     notifications_cfg = _parse_notifications(data.get("notifications") or {})
 
     return Config(
@@ -97,6 +116,7 @@ def load_config(path: Path) -> Config:
         control=control_cfg,
         storage=storage_cfg,
         reporting=reporting_cfg,
+        display=display_cfg,
         notifications=notifications_cfg,
     )
 
@@ -182,6 +202,18 @@ def _parse_reporting(raw: dict[str, Any], base_dir: Path) -> ReportingConfig:
         timezone=timezone,
         retention_days=retention,
     )
+
+
+def _parse_display(raw: dict[str, Any]) -> DisplayConfig:
+    show_ids = raw.get("show_ids", True)
+    if isinstance(show_ids, str):
+        show_ids = show_ids.lower() in {"1", "true", "yes", "on"}
+    else:
+        show_ids = bool(show_ids)
+    fmt = str(raw.get("time_format", DEFAULT_TIME_FORMAT)).strip()
+    if not fmt:
+        fmt = DEFAULT_TIME_FORMAT
+    return DisplayConfig(show_ids=show_ids, time_format=fmt)
 
 
 def _parse_notifications(raw: dict[str, Any]) -> NotificationConfig:
