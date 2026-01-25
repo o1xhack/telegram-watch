@@ -2,6 +2,10 @@
 
 > Entries are arranged from newest to oldest so the latest release notes stay at the top. Each bullet references the requirement(s) that introduced the change.
 
+## 0.1.2 — 2026-01-24
+- Fixed the `run`-mode summary loop so it once again passes the activity tracker and Bark interval label to `_send_report_bundle`, restoring Bark/control-chat notifications and the “Watcher is still running” heartbeat stream (REQ-20260124-024-run-notify-regression).
+- Added an async regression test to ensure future changes keep forwarding the tracker/bark context when scheduling run summaries (REQ-20260124-024-run-notify-regression).
+
 ## 0.1.1 — 2026-01-24
 - Introduced the release-management workflow: every request chooses a semantic version bump, updates the changelog, and links the notes from README (REQ-20260124-023-versioning-log).
 

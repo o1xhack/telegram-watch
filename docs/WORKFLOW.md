@@ -84,6 +84,7 @@ Semantic Versioning (MAJOR.MINOR.PATCH) is now part of every requirement:
   * Update the canonical version string in `pyproject.toml` (and anywhere else we mirror it).
   * Append the new entry to `docs/CHANGELOG.md`, keeping the list in reverse chronological order (newest release at the top).
   * Link back to the requirement ID inside the changelog entry.
+  * Keep README install snippets pointing to the latest published tag. Only bump the `pip install ...@vX.Y.Z` examples after the new tag exists on the remote.
 
 ### Choosing the right bump
 
@@ -94,6 +95,13 @@ Use classic SemVer guidance plus past requests as references:
 * **Major (1.x.y)** — Breaking behavioral changes (schema resets, CLI flag removal, incompatible config). None have shipped yet; treat with extra review.
 
 Purely editorial changes (typo fixes, localization wording tweaks, or notes confined to `docs/inbox.md`) generally **do not** bump the version or touch the changelog; they still need normal review but stay out of release notes.
+
+### Release checklist (maintainers)
+
+1. Ensure the requirement is `Done`, changelog entry committed, and `pyproject.toml` (plus any mirrored version strings) updated.
+2. From the release commit (usually `main`), create and push the tag (e.g., `git tag v0.1.2 && git push origin v0.1.2`).
+3. Update README (all languages) “Option 0 / tagged release” snippets to reference that new tag only **after** it is published, and mention that those commands always point to the latest release.
+4. Publish release notes if needed (GitHub Releases, etc.).
 
 ## Completion
 

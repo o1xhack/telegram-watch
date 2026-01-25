@@ -492,8 +492,8 @@ class _SummaryLoop:
             since,
             now,
             report,
-        tracker=self._tracker,
-        bark_context=f"({_format_interval_label(self.config.reporting.summary_interval_minutes)})",
+            tracker=self._tracker,
+            bark_context=f"({_format_interval_label(self.config.reporting.summary_interval_minutes)})",
         )
 
 
