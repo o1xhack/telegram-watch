@@ -62,3 +62,4 @@
   - Minor (`0.1.x → 0.2.0`): additive features like new config toggles or notification paths (e.g., REQ-20260124-022).
   - Major: breaking schema/CLI changes (none so far).
 - Pure typo/translation tweaks or updates confined to `docs/inbox.md` usually skip version bumps and changelog entries; log them via git notes/commits only.
+- README “tagged release” commands must always reference the latest published tag. Do **not** change `pip install ...@vX.Y.Z` until the new tag exists on GitHub (update all languages together).

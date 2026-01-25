@@ -11,6 +11,7 @@ Created: YYYY-MM-DD  # 与文件名中的日期一致
 ## Release Impact
 - 预计版本号：`x.y.z -> x.y.z`
 - 预告 changelog 文案（英文）：`...`
+> README 中引用的 `pip install ...@vX.Y.Z` 示例只在新版 tag 发布后更新；在 dev 阶段保持指向最新稳定版。
 
 ## Motivation
 为什么要做？解决什么痛点？

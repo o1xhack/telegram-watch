@@ -34,7 +34,7 @@
 直接从 Git Tag 安装稳定版本：
 
 ```bash
-pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.1.1"
+pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.1.0"
 
 python -m tgwatch --help
 ```
@@ -55,7 +55,8 @@ conda activate tgwatch
 python -m pip install -e .
 ```
 
-> 提示：运行命令前只需激活一种环境（`.venv` 或 `conda`）。命令行前缀应显示 `(.venv)` 或 `(tgwatch)`。
+> 提示：运行命令前只需激活一种环境（`.venv` 或 `conda`）。命令行前缀应显示 `(.venv)` 或 `(tgwatch)`。  
+> 上述安装命令始终指向「最近发布的 tag」（当前为 `v0.1.0`），只有在完成新版本发布并打 Tag 后才需要修改这里的示例。
 
 ## 配置
 
