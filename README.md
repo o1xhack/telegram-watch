@@ -34,7 +34,7 @@ Choose **either** a built-in `venv` or a Conda environment; both work as long as
 Install a fixed version from a Git tag so you always get the exact release:
 
 ```bash
-pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.1.0"
+pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.1.1"
 
 python -m tgwatch --help
 ```
@@ -152,6 +152,10 @@ pytest
 - Does not log API hashes, phone numbers, or chat contents.
 - Session + DB + media directories are `.gitignore`d; keep secrets local.
 - Flood-wait handling/backoff is included for login, downloads, and bot responses.
+
+## Changelog
+
+Release notes (newest at the top, older entries further down) live in [docs/CHANGELOG.md](docs/CHANGELOG.md). Each entry links to the request ID so you can see which features or fixes landed in a given version.
 
 ## License
 

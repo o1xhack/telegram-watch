@@ -34,7 +34,7 @@ Mac 上で完結する Telegram ウォッチャー（Telethon 製）。主な特
 固定された Git タグから安定版をインストールします：
 
 ```bash
-pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.1.0"
+pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.1.1"
 
 python -m tgwatch --help
 ```

@@ -53,3 +53,12 @@
   - add a brief "What changed" section at the bottom of the REQ
 - If multiple Approved requests exist:
   - pick the smallest/lowest-numbered first unless user specifies an ID.
+
+## Versioning & changelog expectations
+- Every new request must include a “Release Impact” section that proposes the semantic version bump (MAJOR.MINOR.PATCH) and drafts the changelog snippet (English, App Store style).
+- Once implementation finishes, update the canonical version in `pyproject.toml`, append the request entry to `docs/CHANGELOG.md` (newest entries at top), and ensure README links to the changelog stay accurate.
+- Use SemVer heuristics:
+  - Patch (`0.1.x → 0.1.x+1`): backward-compatible fixes/docs that adjust existing flows (e.g., REQ-20260123-011).
+  - Minor (`0.1.x → 0.2.0`): additive features like new config toggles or notification paths (e.g., REQ-20260124-022).
+  - Major: breaking schema/CLI changes (none so far).
+- Pure typo/translation tweaks or updates confined to `docs/inbox.md` usually skip version bumps and changelog entries; log them via git notes/commits only.

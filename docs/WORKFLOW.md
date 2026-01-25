@@ -70,6 +70,31 @@ For each `Approved` requirement:
    * Keep changes minimal and reviewable.
 4. Run the acceptance commands listed in the requirement (and in `ACCEPTANCE.md`).
 
+## Release Impact, Versioning, and Changelog
+
+Semantic Versioning (MAJOR.MINOR.PATCH) is now part of every requirement:
+
+* **While drafting a request**
+  * Add a `## Release Impact` section (see the template) that states the proposed version bump (e.g., `0.1.0 → 0.1.1`) and a short changelog blurb.
+  * Discuss the rationale before the request is Approved so reviewers can agree on the bump size.
+* **During implementation**
+  * Keep the planned version top of mind; if scope changes, update the `Release Impact` section and get reconfirmed.
+  * Prepare the changelog entry text in English and keep it concise (“App Store” style bullet list).
+* **Completion**
+  * Update the canonical version string in `pyproject.toml` (and anywhere else we mirror it).
+  * Append the new entry to `docs/CHANGELOG.md`, keeping the list in reverse chronological order (newest release at the top).
+  * Link back to the requirement ID inside the changelog entry.
+
+### Choosing the right bump
+
+Use classic SemVer guidance plus past requests as references:
+
+* **Patch (0.1.x → 0.1.x+1)** — Backwards-compatible fixes or documentation that materially change how users operate the current release. Examples: documentation improvements that unblock setup (REQ-20260117-002) or formatting refinements to existing features (REQ-20260123-011).
+* **Minor (0.1.x → 0.2.0)** — Additive functionality or new configuration surfaces that expand behavior while remaining compatible, such as the control-chat display toggles from REQ-20260124-022 or new notification channels.
+* **Major (1.x.y)** — Breaking behavioral changes (schema resets, CLI flag removal, incompatible config). None have shipped yet; treat with extra review.
+
+Purely editorial changes (typo fixes, localization wording tweaks, or notes confined to `docs/inbox.md`) generally **do not** bump the version or touch the changelog; they still need normal review but stay out of release notes.
+
 ## Completion
 
 When work is complete:
