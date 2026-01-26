@@ -1,5 +1,7 @@
 # Configuration Guide
 
+[English](configuration.md) | [简体中文](configuration.zh-Hans.md) | [繁體中文](configuration.zh-Hant.md) | [日本語](configuration.ja.md)
+
 `tgwatch` reads all runtime parameters from `config.toml`. This file stays on your Mac and should never be committed or shared. Follow the steps below to fill every field with valid values before running `python -m tgwatch ...`.
 
 ## 1. Copy the example
