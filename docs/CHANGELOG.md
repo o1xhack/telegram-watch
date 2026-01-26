@@ -9,6 +9,7 @@
 - Archived completed request documents under `docs/requests/Done/` to keep the active backlog concise (REQ-20260125-005-archive-done-requests).
 - Fixed heartbeat scheduling so run-mode “Watcher is still running” repeats on the expected idle interval (REQ-20260125-006-heartbeat-repeat).
 - Split HTML report delivery by user when topic routing is enabled, sending each report to its mapped forum topic (REQ-20260125-007-topic-report-split).
+- Updated README install tags and config hints for v0.2.0 (REQ-20260125-008-readme-release-tag).
 
 ## 0.1.2 — 2026-01-24
 - Fixed the `run`-mode summary loop so it once again passes the activity tracker and Bark interval label to `_send_report_bundle`, restoring Bark/control-chat notifications and the “Watcher is still running” heartbeat stream (REQ-20260124-024-run-notify-regression).

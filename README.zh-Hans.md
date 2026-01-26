@@ -42,7 +42,7 @@
 直接从 Git Tag 安装稳定版本：
 
 ```bash
-pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.1.0"
+pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.2.0"
 
 python -m tgwatch --help
 ```
@@ -64,7 +64,7 @@ python -m pip install -e .
 ```
 
 > 提示：运行命令前只需激活一种环境（`.venv` 或 `conda`）。命令行前缀应显示 `(.venv)` 或 `(tgwatch)`。  
-> 上述安装命令始终指向「最近发布的 tag」（当前为 `v0.1.0`），只有在完成新版本发布并打 Tag 后才需要修改这里的示例。
+> 上述安装命令始终指向「最近发布的 tag」（当前为 `v0.2.0`），只有在完成新版本发布并打 Tag 后才需要修改这里的示例。
 
 ## 配置
 
@@ -82,6 +82,7 @@ python -m pip install -e .
    - `target.tracked_user_ids`（需要跟踪的用户 ID 列表）
    - `[target.tracked_user_aliases]`（可选的 ID→别名映射）
    - `control.control_chat_id`（接收报告与命令的控制群）
+   - `control.is_forum` / `control.topic_routing_enabled` / `[control.topic_user_map]`（可选：按用户分流到 TG Topic）
    - `storage.db_path` 与 `storage.media_dir`
    - `reporting.reports_dir` 与 `reporting.summary_interval_minutes`（报告频率）
    - `reporting.timezone`（如 `Asia/Shanghai`、`America/Los_Angeles` 等）

@@ -42,7 +42,7 @@ Mac 上で完結する Telegram ウォッチャー（Telethon 製）。主なポ
 固定された Git タグから安定版をインストールします：
 
 ```bash
-pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.1.0"
+pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.2.0"
 
 python -m tgwatch --help
 ```
@@ -64,7 +64,7 @@ python -m pip install -e .
 ```
 
 > ヒント：コマンド実行時はどちらか一方の環境のみアクティブにしてください。プロンプトに `(.venv)` または `(tgwatch)` が表示されていることを確認しましょう。  
-> 上記のタグは常に「最新リリース済みのバージョン」（現在は `v0.1.0`）を指します。新しいタグを公開した後にのみ、このサンプルを更新してください。
+> 上記のタグは常に「最新リリース済みのバージョン」（現在は `v0.2.0`）を指します。新しいタグを公開した後にのみ、このサンプルを更新してください。
 
 ## 設定
 
@@ -82,6 +82,7 @@ python -m pip install -e .
    - `target.tracked_user_ids`（追跡するユーザー ID の配列）
    - `[target.tracked_user_aliases]`（オプション：ID と表示名の対応表）
    - `control.control_chat_id`（レポート・コマンドの送受信先）
+   - `control.is_forum` / `control.topic_routing_enabled` / `[control.topic_user_map]`（任意：ユーザー別に TG Topic へ振り分け）
    - `storage.db_path` と `storage.media_dir`
    - `reporting.reports_dir`, `reporting.summary_interval_minutes`（レポートの間隔）
    - `reporting.timezone`（例：`Asia/Tokyo`、`America/Los_Angeles` 等）
