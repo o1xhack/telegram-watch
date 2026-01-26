@@ -619,9 +619,16 @@ async def _send_messages_to_control(
     messages: Sequence[DbMessage],
 ) -> None:
     for message in messages:
+        reply_to = _topic_reply_id_for_message(config, message)
         text = _format_control_message(message, config)
-        await _send_with_backoff(client, control_chat_id, text, parse_mode="html")
-        await _send_media_for_message(client, control_chat_id, message, config)
+        await _send_with_backoff(
+            client,
+            control_chat_id,
+            text,
+            parse_mode="html",
+            reply_to=reply_to,
+        )
+        await _send_media_for_message(client, control_chat_id, message, config, reply_to=reply_to)
 
 
 async def _send_media_for_message(
@@ -629,6 +636,7 @@ async def _send_media_for_message(
     control_chat_id: int,
     message: DbMessage,
     config: Config,
+    reply_to: int | None,
 ) -> None:
     if not message.media:
         return
@@ -655,6 +663,7 @@ async def _send_media_for_message(
             control_chat_id,
             file_path,
             caption=caption,
+            reply_to=reply_to,
         )
 
 
@@ -685,11 +694,22 @@ def _format_control_message(message: DbMessage, config: Config) -> str:
         reply_line = f"↩ Reply to {escape(reply_label)}"
         if message.replied_date:
             reply_line += f" at {escape(_format_timestamp_local(message.replied_date, config))}"
+        raw_reply_text = (message.replied_text or "").lstrip("\n\r")
+        reply_text = escape(raw_reply_text) if raw_reply_text else "<i>no text</i>"
         quote_blocks.append(f"<blockquote>{reply_line}</blockquote>")
-        reply_text = escape(message.replied_text) if message.replied_text else "<i>no text</i>"
         quote_blocks.append(f"<blockquote>{reply_text}</blockquote>")
     lines.extend(quote_blocks)
     return "\n".join(lines)
+
+
+def _topic_reply_id_for_message(config: Config, message: DbMessage) -> int | None:
+    control = config.control
+    if not (control.is_forum and control.topic_routing_enabled):
+        return None
+    topic_id = control.topic_user_map.get(message.sender_id)
+    if not topic_id or topic_id == 1:
+        return None
+    return topic_id
 
 
 def _format_user_counts(

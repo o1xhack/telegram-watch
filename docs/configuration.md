@@ -69,6 +69,39 @@ Pick whichever option your group permissions allow. Once you have the numeric ID
 Field | Description | Recommendation
 ----- | ----------- | --------------
 `control_chat_id` | Where tgwatch posts summaries and where you send commands (`/last`, `/since`, etc.). | Use your personal “Saved Messages” dialog or a private group that only you control. Retrieve the numeric ID the same way as the target chat (bots like `@userinfobot` show `chat_id` in replies). Make sure your own Telegram account is a member so commands are accepted.
+`is_forum` | Set `true` if the control chat has Topics (forum mode) enabled. | Keep `false` for normal groups or “Saved Messages”.
+`topic_routing_enabled` | Enable per-user routing into forum topics. | Leave `false` unless you want per-user topics.
+`topic_user_map` | Map tracked user IDs to forum topic IDs. | Provide only when `topic_routing_enabled = true`.
+
+### Topic routing (forum groups)
+
+When `is_forum = true` and `topic_routing_enabled = true`, tgwatch sends each tracked user’s messages into the configured forum topic for that user. If a user is not listed in `topic_user_map`, their messages fall back to the General topic.
+
+Example:
+
+```toml
+[control]
+control_chat_id = -1009876543210
+is_forum = true
+topic_routing_enabled = true
+
+[control.topic_user_map]
+11111111 = 9001  # Alice -> Topic A
+22222222 = 9002  # Bob -> Topic B
+```
+
+#### How to find a topic ID
+
+Topic IDs are the message IDs of the service message that created the topic. The easiest way to obtain one:
+
+1. Open the control group, then open the target topic.
+2. Find the system message that says the topic was created (or the first message in that topic).
+3. Right-click the message and choose **Copy message link**.
+4. The link looks like `https://t.me/c/1234567890/9001` (or similar). The last number (`9001`) is the topic ID.
+
+The General topic always uses ID `1`. When topic routing is disabled, tgwatch posts to General by default.
+
+If you only want the General topic, you can omit `topic_user_map` and keep `topic_routing_enabled = false`.
 
 ## 5. Local storage (`[storage]`)
 

@@ -13,6 +13,12 @@ tracked_user_ids = [11111111, 22222222]
 
 [control]
 control_chat_id = -1009876543210
+is_forum = false
+topic_routing_enabled = false
+
+[control.topic_user_map]
+11111111 = 9001
+22222222 = 9002
 
 [storage]
 db_path = "data/tgwatch.sqlite3"

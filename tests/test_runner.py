@@ -29,7 +29,12 @@ def build_config(tmp_path: Path) -> Config:
         tracked_user_ids=(111,),
         tracked_user_aliases=MappingProxyType({}),
     )
-    control = ControlConfig(control_chat_id=-456)
+    control = ControlConfig(
+        control_chat_id=-456,
+        is_forum=False,
+        topic_routing_enabled=False,
+        topic_user_map=MappingProxyType({}),
+    )
     storage = StorageConfig(db_path=tmp_path / "db.sqlite3", media_dir=tmp_path / "media")
     reporting = ReportingConfig(
         reports_dir=tmp_path / "reports",
