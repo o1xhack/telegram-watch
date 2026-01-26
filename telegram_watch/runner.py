@@ -569,7 +569,9 @@ class _ActivityTracker:
     def should_send_heartbeat(self, now: datetime, idle_seconds: int) -> bool:
         if (now - self.last_activity) < timedelta(seconds=idle_seconds):
             return False
-        return self.last_heartbeat_sent is None
+        if self.last_heartbeat_sent is None:
+            return True
+        return (now - self.last_heartbeat_sent) >= timedelta(seconds=idle_seconds)
 
     def mark_heartbeat(self, when: datetime) -> None:
         self.last_heartbeat_sent = when

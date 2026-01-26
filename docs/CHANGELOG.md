@@ -7,6 +7,7 @@
 - Restored reply blockquote formatting in control-chat pushes to avoid extra blank lines between reply header and quoted text (REQ-20260125-003-reply-blockquote-regression).
 - Refreshed README highlights and feature list to reflect current capabilities including topic routing (REQ-20260125-004-readme-refresh).
 - Archived completed request documents under `docs/requests/Done/` to keep the active backlog concise (REQ-20260125-005-archive-done-requests).
+- Fixed heartbeat scheduling so run-mode “Watcher is still running” repeats on the expected idle interval (REQ-20260125-006-heartbeat-repeat).
 
 ## 0.1.2 — 2026-01-24
 - Fixed the `run`-mode summary loop so it once again passes the activity tracker and Bark interval label to `_send_report_bundle`, restoring Bark/control-chat notifications and the “Watcher is still running” heartbeat stream (REQ-20260124-024-run-notify-regression).
