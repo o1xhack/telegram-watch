@@ -76,6 +76,7 @@ Field | Description | Recommendation
 ### Topic routing (forum groups)
 
 When `is_forum = true` and `topic_routing_enabled = true`, tgwatch sends each tracked user’s messages into the configured forum topic for that user. If a user is not listed in `topic_user_map`, their messages fall back to the General topic.
+When topic routing is enabled, HTML reports are also split per user and sent to the matching topic before the message stream.
 
 Example:
 

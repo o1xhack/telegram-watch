@@ -591,15 +591,27 @@ async def _send_report_bundle(
     bark_context: str | None = None,
 ) -> None:
     window = f"{since.isoformat()} → {(until.isoformat() if until else 'now')}"
-    caption = f"tgwatch report\nWindow: {window}\nMessages: {len(messages)}"
     control = config.control.control_chat_id
-    await _send_file_with_backoff(
-        client,
-        control,
-        report_path,
-        caption=caption,
-    )
-    await _send_messages_to_control(client, config, control, messages)
+    if _topic_routing_enabled(config):
+        await _send_topic_reports(
+            client,
+            config,
+            control,
+            messages,
+            since,
+            until,
+            report_path.parent,
+        )
+        await _send_messages_to_control(client, config, control, messages)
+    else:
+        caption = f"tgwatch report\nWindow: {window}\nMessages: {len(messages)}"
+        await _send_file_with_backoff(
+            client,
+            control,
+            report_path,
+            caption=caption,
+        )
+        await _send_messages_to_control(client, config, control, messages)
     if tracker:
         tracker.mark_activity()
     counts_text = _format_user_counts(messages, config)
@@ -712,6 +724,58 @@ def _topic_reply_id_for_message(config: Config, message: DbMessage) -> int | Non
     if not topic_id or topic_id == 1:
         return None
     return topic_id
+
+
+def _topic_routing_enabled(config: Config) -> bool:
+    return bool(config.control.is_forum and config.control.topic_routing_enabled)
+
+
+def _topic_reply_id_for_user(config: Config, user_id: int) -> int | None:
+    control = config.control
+    topic_id = control.topic_user_map.get(user_id)
+    if not topic_id or topic_id == 1:
+        return None
+    return topic_id
+
+
+async def _send_topic_reports(
+    client: TelegramClient,
+    config: Config,
+    control_chat_id: int,
+    messages: Sequence[DbMessage],
+    since: datetime,
+    until: datetime | None,
+    report_dir: Path,
+) -> None:
+    grouped: dict[int, list[DbMessage]] = {}
+    for message in messages:
+        grouped.setdefault(message.sender_id, []).append(message)
+    window = f"{since.isoformat()} → {(until.isoformat() if until else 'now')}"
+    for user_id, items in grouped.items():
+        label = config.format_user_label(user_id)
+        report_name = f"index_{user_id}.html"
+        report_path = generate_report(
+            items,
+            config,
+            since,
+            until,
+            report_dir=report_dir,
+            report_name=report_name,
+        )
+        caption = (
+            "tgwatch report\n"
+            f"User: {label}\n"
+            f"Window: {window}\n"
+            f"Messages: {len(items)}"
+        )
+        reply_to = _topic_reply_id_for_user(config, user_id)
+        await _send_file_with_backoff(
+            client,
+            control_chat_id,
+            report_path,
+            caption=caption,
+            reply_to=reply_to,
+        )
 
 
 def _format_user_counts(
