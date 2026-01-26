@@ -12,6 +12,7 @@ This repository uses a lightweight, file-based requirements workflow designed fo
 ## Source of Truth
 
 * `docs/requests/` is the authoritative backlog of structured requirements.
+* Completed requirements live under `docs/requests/Done/` to keep the active backlog small.
 * `docs/inbox.md` is an unstructured intake area for ideas and notes.
 
 ## Directory Layout
@@ -19,6 +20,7 @@ This repository uses a lightweight, file-based requirements workflow designed fo
 * `docs/inbox.md` — quick capture of ideas (no format required)
 * `docs/templates/REQ_TEMPLATE.md` — the canonical requirement template
 * `docs/requests/REQ-YYYYMMDD-###-slug.md` — structured requirements (tracked and status-driven)
+* `docs/requests/Done/REQ-YYYYMMDD-###-slug.md` — archived requirements with `Status: Done`
 
 ## Requirement File Naming
 
@@ -50,6 +52,7 @@ Rules:
 
 1. New ideas are added to `docs/inbox.md` (freeform).
 2. When a request is ready to be formalized, create a new file in `docs/requests/` using `docs/templates/REQ_TEMPLATE.md`.
+3. When a request is completed, move it to `docs/requests/Done/`.
 3. Set `Status: Draft`.
 4. Stop and request explicit approval before any coding begins.
 
@@ -121,7 +124,7 @@ Unless a maintainer specifies otherwise:
 
 ## Pull Request / Contribution Notes (Open Source)
 
-* Every PR should reference one requirement file in `docs/requests/`.
+* Every PR should reference one requirement file in `docs/requests/` (or `docs/requests/Done/` if already archived).
 * PRs should be small and scoped to the requirement’s “Scope (MVP)” section.
 * Changes that expand scope require either:
 
@@ -132,5 +135,6 @@ Unless a maintainer specifies otherwise:
 
 * Add ideas to `docs/inbox.md`.
 * Convert to `docs/requests/REQ-...md` using the template (Status: Draft).
+* Move completed requests to `docs/requests/Done/`.
 * Approve by changing to `Status: Approved`.
 * Implement via Codex; finish with `Status: Done` + checked acceptance items.
