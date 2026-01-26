@@ -52,3 +52,10 @@ When using this skill, ALWAYS follow this workflow:
 - Never print or commit secrets (api_hash, phone, session).
 - Ensure `.gitignore` excludes: `config.toml`, `*.session`, `data/`, `reports/`.
 - Keep data local by default; do not add cloud dependencies unless explicitly approved.
+
+8) Commit protocol
+- When the user says “commit”, always include both a summary and a description in the commit message.
+- Use this format:
+  - `git commit -m "SUMMARY" -m "DETAILS"`
+  - SUMMARY: short, action-oriented, and specific.
+  - DETAILS: 2–6 bullets or sentences describing key changes, ordered by importance.

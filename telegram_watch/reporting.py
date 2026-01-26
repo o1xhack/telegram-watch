@@ -35,17 +35,20 @@ def generate_report(
     config: Config,
     since: datetime,
     until: datetime | None,
+    report_dir: Path | None = None,
+    report_name: str = "index.html",
 ) -> Path:
     """Generate HTML report and return the file path."""
-    now = utc_now()
-    report_dir = (
-        config.reporting.reports_dir
-        / now.strftime("%Y-%m-%d")
-        / now.strftime("%H%M")
-    )
+    if report_dir is None:
+        now = utc_now()
+        report_dir = (
+            config.reporting.reports_dir
+            / now.strftime("%Y-%m-%d")
+            / now.strftime("%H%M")
+        )
     report_dir.mkdir(parents=True, exist_ok=True)
     html = _render_html(messages, config, since, until, report_dir)
-    path = report_dir / "index.html"
+    path = report_dir / report_name
     path.write_text(html, encoding="utf-8")
     return path
 

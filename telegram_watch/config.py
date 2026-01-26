@@ -38,6 +38,9 @@ class TargetConfig:
 @dataclass(frozen=True)
 class ControlConfig:
     control_chat_id: int
+    is_forum: bool
+    topic_routing_enabled: bool
+    topic_user_map: Mapping[int, int]
 
 
 @dataclass(frozen=True)
@@ -104,7 +107,7 @@ def load_config(path: Path) -> Config:
 
     telegram_cfg = _parse_telegram(data.get("telegram") or {}, base_dir)
     target_cfg = _parse_target(data.get("target") or {})
-    control_cfg = _parse_control(data.get("control") or {})
+    control_cfg = _parse_control(data.get("control") or {}, target_cfg.tracked_user_ids)
     storage_cfg = _parse_storage(data.get("storage") or {}, base_dir)
     reporting_cfg = _parse_reporting(data.get("reporting") or {}, base_dir)
     display_cfg = _parse_display(data.get("display") or {})
@@ -168,10 +171,41 @@ def _parse_target(raw: dict[str, Any]) -> TargetConfig:
     )
 
 
-def _parse_control(raw: dict[str, Any]) -> ControlConfig:
+def _parse_control(raw: dict[str, Any], tracked_user_ids: tuple[int, ...]) -> ControlConfig:
     _require_fields(raw, "control", ("control_chat_id",))
     control_chat_id = _require_int(raw["control_chat_id"], "control.control_chat_id")
-    return ControlConfig(control_chat_id=control_chat_id)
+    is_forum = _parse_bool(raw.get("is_forum", False))
+    topic_routing_enabled = _parse_bool(raw.get("topic_routing_enabled", False))
+    topic_map_raw = raw.get("topic_user_map", {})
+    if topic_map_raw and not isinstance(topic_map_raw, dict):
+        raise ConfigError("control.topic_user_map must be a table of user_id = topic_id entries")
+    topic_map: dict[int, int] = {}
+    for key, value in topic_map_raw.items():
+        try:
+            user_id = int(key)
+        except (TypeError, ValueError) as exc:
+            raise ConfigError("control.topic_user_map keys must be integers") from exc
+        try:
+            topic_id = int(value)
+        except (TypeError, ValueError) as exc:
+            raise ConfigError("control.topic_user_map values must be integers") from exc
+        if topic_id <= 0:
+            raise ConfigError("control.topic_user_map values must be positive integers")
+        topic_map[user_id] = topic_id
+    unknown_users = set(topic_map) - set(tracked_user_ids)
+    if unknown_users:
+        formatted = ", ".join(str(uid) for uid in sorted(unknown_users))
+        raise ConfigError(f"Topic routing configured for unknown tracked user(s): {formatted}")
+    if topic_routing_enabled and not is_forum:
+        raise ConfigError("control.topic_routing_enabled requires control.is_forum = true")
+    if topic_routing_enabled and not topic_map:
+        raise ConfigError("control.topic_routing_enabled requires control.topic_user_map to be set")
+    return ControlConfig(
+        control_chat_id=control_chat_id,
+        is_forum=is_forum,
+        topic_routing_enabled=topic_routing_enabled,
+        topic_user_map=MappingProxyType(topic_map),
+    )
 
 
 def _parse_storage(raw: dict[str, Any], base_dir: Path) -> StorageConfig:
@@ -205,11 +239,7 @@ def _parse_reporting(raw: dict[str, Any], base_dir: Path) -> ReportingConfig:
 
 
 def _parse_display(raw: dict[str, Any]) -> DisplayConfig:
-    show_ids = raw.get("show_ids", True)
-    if isinstance(show_ids, str):
-        show_ids = show_ids.lower() in {"1", "true", "yes", "on"}
-    else:
-        show_ids = bool(show_ids)
+    show_ids = _parse_bool(raw.get("show_ids", True))
     fmt = str(raw.get("time_format", DEFAULT_TIME_FORMAT)).strip()
     if not fmt:
         fmt = DEFAULT_TIME_FORMAT
@@ -223,6 +253,12 @@ def _parse_notifications(raw: dict[str, Any]) -> NotificationConfig:
         if not bark_key:
             bark_key = None
     return NotificationConfig(bark_key=bark_key)
+
+
+def _parse_bool(value: Any) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
 
 
 def _require_fields(raw: dict[str, Any], section: str, fields: Iterable[str]) -> None:

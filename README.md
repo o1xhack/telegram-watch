@@ -8,13 +8,21 @@
 
 Fully local Telegram watcher powered by Telethon. Key highlights:
 
-- **User-level monitoring** – logs in with your own account (not a Bot) and watches a target supergroup/channel for a fixed list of tracked user IDs.
-- **Rich capture** – stores text, reply chains, and media snapshots into SQLite plus a local media folder.
-- **Automated reporting** – on each configurable window (5–120 minutes, etc.) it builds a full HTML report, pushes the file to the control chat, then streams every tracked message (with clickable `MSG` links back to Telegram).
-- **Inline media preview** – HTML embeds images as Base64, so reports opened inside Telegram or on mobile still show pictures.
-- **Heartbeat + alerts** – if no activity occurs for 2 hours the control chat receives “Watcher is still running”; unhandled exceptions trigger an error notification before exit.
-- **Retention controls** – `reporting.retention_days` (default 30) keeps report/media folders in check and purges old ones; values >180 prompt for confirmation.
-- **Optional Bark push** – configure your Bark key to mirror report/heartbeat/error notifications to your phone (grouped under “Telegram Watch”).
+- **User-account only** – logs in with your own Telegram account (MTProto, not a Bot) and watches a target supergroup/channel.
+- **Per-user routing** – track specific user IDs and optionally route their control-chat pushes into forum topics (General fallback by default).
+- **Actionable reports** – builds HTML reports on a configurable window, uploads them to the control chat, and streams tracked messages with clickable `MSG` links.
+- **Context preserved** – captures reply text + media snapshots and keeps everything in SQLite + local media storage.
+- **Operational safety** – heartbeat + error alerts, retention cleanup, FloodWait backoff, and optional Bark push.
+
+## Features
+
+- Log in with your own Telegram account (MTProto), no Bot required.
+- Track multiple user IDs at once, with optional aliases for readability.
+- Push reports + messages to a control chat with handy commands (`/last`, `/since`, `/export`).
+- Optionally split pushes by Telegram Topics (主题) so each user goes to their own topic; unconfigured users fall back to the General topic.
+- Keep reply context together (quoted text + media) so conversations make sense.
+- HTML reports with inline images and clickable `MSG` links back to Telegram.
+- Automatic cleanup of old reports/media to keep disk usage in check.
 
 The sections below cover installation, configuration, and usage.
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import MappingProxyType
 
@@ -29,7 +30,12 @@ def build_config(tmp_path: Path) -> Config:
         tracked_user_ids=(111,),
         tracked_user_aliases=MappingProxyType({}),
     )
-    control = ControlConfig(control_chat_id=-456)
+    control = ControlConfig(
+        control_chat_id=-456,
+        is_forum=False,
+        topic_routing_enabled=False,
+        topic_user_map=MappingProxyType({}),
+    )
     storage = StorageConfig(db_path=tmp_path / "db.sqlite3", media_dir=tmp_path / "media")
     reporting = ReportingConfig(
         reports_dir=tmp_path / "reports",
@@ -48,6 +54,21 @@ def build_config(tmp_path: Path) -> Config:
         display=display,
         notifications=notifications,
     )
+
+
+def test_heartbeat_repeats_after_idle_interval():
+    tracker = runner._ActivityTracker()
+    now = datetime(2026, 1, 25, 12, 0, 0, tzinfo=timezone.utc)
+    tracker.last_activity = now - timedelta(hours=3)
+
+    tracker.last_heartbeat_sent = None
+    assert tracker.should_send_heartbeat(now, idle_seconds=2 * 60 * 60) is True
+
+    tracker.last_heartbeat_sent = now - timedelta(hours=1)
+    assert tracker.should_send_heartbeat(now, idle_seconds=2 * 60 * 60) is False
+
+    tracker.last_heartbeat_sent = now - timedelta(hours=2, seconds=1)
+    assert tracker.should_send_heartbeat(now, idle_seconds=2 * 60 * 60) is True
 
 
 @pytest.mark.asyncio

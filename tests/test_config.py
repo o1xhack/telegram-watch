@@ -123,3 +123,93 @@ def test_aliases_must_match_tracked_users(tmp_path):
     )
     with pytest.raises(ConfigError):
         load_config(cfg_path)
+
+
+def test_topic_routing_parses_when_enabled(tmp_path):
+    cfg_path = write_config(
+        tmp_path,
+        """
+        [telegram]
+        api_id = 42
+        api_hash = "abcdefghijk"
+
+        [target]
+        target_chat_id = -1001
+        tracked_user_ids = [123, 456]
+
+        [control]
+        control_chat_id = -1002
+        is_forum = true
+        topic_routing_enabled = true
+
+        [control.topic_user_map]
+        123 = 9001
+        456 = 9002
+
+        [storage]
+        db_path = "data/app.sqlite3"
+        media_dir = "data/media"
+        """,
+    )
+    config = load_config(cfg_path)
+    assert config.control.is_forum is True
+    assert config.control.topic_routing_enabled is True
+    assert config.control.topic_user_map[123] == 9001
+
+
+def test_topic_routing_requires_forum_flag(tmp_path):
+    cfg_path = write_config(
+        tmp_path,
+        """
+        [telegram]
+        api_id = 42
+        api_hash = "abcdefghijk"
+
+        [target]
+        target_chat_id = -1001
+        tracked_user_ids = [123]
+
+        [control]
+        control_chat_id = -1002
+        is_forum = false
+        topic_routing_enabled = true
+
+        [control.topic_user_map]
+        123 = 9001
+
+        [storage]
+        db_path = "data/app.sqlite3"
+        media_dir = "data/media"
+        """,
+    )
+    with pytest.raises(ConfigError):
+        load_config(cfg_path)
+
+
+def test_topic_routing_rejects_unknown_users(tmp_path):
+    cfg_path = write_config(
+        tmp_path,
+        """
+        [telegram]
+        api_id = 42
+        api_hash = "abcdefghijk"
+
+        [target]
+        target_chat_id = -1001
+        tracked_user_ids = [123]
+
+        [control]
+        control_chat_id = -1002
+        is_forum = true
+        topic_routing_enabled = true
+
+        [control.topic_user_map]
+        999 = 9001
+
+        [storage]
+        db_path = "data/app.sqlite3"
+        media_dir = "data/media"
+        """,
+    )
+    with pytest.raises(ConfigError):
+        load_config(cfg_path)
