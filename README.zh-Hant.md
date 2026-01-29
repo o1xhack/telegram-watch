@@ -78,6 +78,7 @@ python -m pip install -e .
 
    - `telegram.api_id` / `telegram.api_hash`
    - `telegram.session_file`（預設 `data/tgwatch.session`）
+   - `[sender] session_file`（可選：用第二帳號發送以讓主帳號收到通知）
    - `target.target_chat_id`（目標群/頻道 ID）
    - `target.tracked_user_ids`（要監控的使用者 ID 列表）
    - `[target.tracked_user_aliases]`（可選 ID→別名對應）

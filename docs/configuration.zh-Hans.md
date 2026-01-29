@@ -22,7 +22,17 @@ cp config.example.toml config.toml
 
 首次运行（`python -m tgwatch run ...`）会在终端提示输入验证码，并自动生成 session 文件。
 
-## 3. 目标群信息（`[target]`）
+## 3. 发送端账号（可选）（`[sender]`）
+
+用于“双账号桥接”：账号 A 负责抓取，账号 B 负责发送控制群消息，从而让账号 A 能收到通知。
+
+字段 | 含义 | 说明
+----- | ---- | ----
+`session_file` | 发送端账号（账号 B）的 session 文件路径。 | 只要设置了 `[sender]` 就必须填写。与 `[telegram]` 共用同一 `api_id` / `api_hash`，但路径必须与 `telegram.session_file` 不同。
+
+首次运行会分别提示登录账号 B。请确保账号 B 已加入控制群并拥有发言权限。不需要桥接时可省略 `[sender]`。
+
+## 4. 目标群信息（`[target]`）
 
 字段 | 含义 | 获取方式
 ----- | ---- | ----
@@ -63,7 +73,7 @@ cp config.example.toml config.toml
 
    若仅有原生 macOS “Telegram” 应用（圆形图标）且无 Advanced 菜单，请安装 Desktop 版或使用网页版（`https://web.telegram.org/k/`），地址栏会显示 `#-1001234567890`。
 
-## 4. 控制群（`[control]`）
+## 5. 控制群（`[control]`）
 
 字段 | 描述 | 建议
 ----- | ---- | ----
@@ -101,7 +111,7 @@ Topic ID 即创建该 Topic 的系统消息 ID。获取方式：
 
 General 主题固定 ID 为 `1`。关闭 Topic 路由时默认发送到 General。
 
-## 5. 本地存储（`[storage]`）
+## 6. 本地存储（`[storage]`）
 
 字段 | 描述 | 默认值
 ----- | ---- | ------
@@ -110,7 +120,7 @@ General 主题固定 ID 为 `1`。关闭 Topic 路由时默认发送到 General�
 
 可保留默认值或设置为可写路径。`doctor` 会检查目录可创建且数据库可写。
 
-## 6. 报告（`[reporting]`）
+## 7. 报告（`[reporting]`）
 
 字段 | 描述 | 默认值
 ----- | ---- | ------
@@ -121,20 +131,20 @@ General 主题固定 ID 为 `1`。关闭 Topic 路由时默认发送到 General�
 
 每个时间窗内，tgwatch 会生成 HTML 报告并推送到控制群，然后逐条发送该窗口的消息（含引用与媒体）。
 
-## 7. 显示（`[display]`）
+## 8. 显示（`[display]`）
 
 字段 | 描述 | 默认值
 ----- | ---- | ------
 `show_ids` | 控制群推送中是否显示用户 ID。 | `true`
 `time_format` | 时间戳格式（strftime 语法）。为空则使用默认值。 | `%Y.%m.%d %H:%M:%S (%Z)`
 
-## 8. 通知（`[notifications]`）
+## 9. 通知（`[notifications]`）
 
 字段 | 描述 | 默认值
 ----- | ---- | ------
 `bark_key` | Bark 推送密钥。设置后，报告/心跳/错误会推送到手机。 | （空）
 
-## 9. 验证配置
+## 10. 验证配置
 
 编辑 `config.toml` 后执行：
 

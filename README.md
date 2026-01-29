@@ -78,6 +78,7 @@ python -m pip install -e .
 
    - `telegram.api_id` / `telegram.api_hash`
    - `telegram.session_file` (defaults to `data/tgwatch.session`)
+   - `[sender] session_file` (optional second-account session used to send control messages so the primary account can receive notifications)
    - `target.target_chat_id` (the group/channel ID)
    - `target.tracked_user_ids` (list of numeric user IDs to monitor)
    - `[target.tracked_user_aliases]` (optional ID→alias mapping for nicer reports)

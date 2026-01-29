@@ -78,6 +78,7 @@ python -m pip install -e .
 
    - `telegram.api_id` / `telegram.api_hash`
    - `telegram.session_file`（デフォルト `data/tgwatch.session`）
+   - `[sender] session_file`（任意：通知復元のために送信専用の第二アカウントを使う場合）
    - `target.target_chat_id`（監視対象グループ/チャンネルの ID）
    - `target.tracked_user_ids`（追跡するユーザー ID の配列）
    - `[target.tracked_user_aliases]`（オプション：ID と表示名の対応表）

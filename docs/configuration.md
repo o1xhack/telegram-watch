@@ -22,7 +22,17 @@ Field | How to obtain | Notes
 
 First run (`python -m tgwatch run ...`) will prompt for the Telegram login code in the terminal and populate the session file automatically.
 
-## 3. Target chat details (`[target]`)
+## 3. Sender account (optional) (`[sender]`)
+
+Use this when you want a second Telegram account to *send* control-group messages, so your primary account (the one that reads/collects messages) can still receive notifications. This is the “A collects, B sends” bridge.
+
+Field | What it represents | Notes
+----- | ------------------ | -----
+`session_file` | Session file for the sender account (account B). | Required when `[sender]` is set. Uses the same `api_id` / `api_hash` as `[telegram]`. Must be a different path from `telegram.session_file`.
+
+First run will prompt for the sender account login code separately. Make sure account B is a member of the control chat and has permission to post. Omit `[sender]` to keep the current single-account behavior.
+
+## 4. Target chat details (`[target]`)
 
 Field | What it represents | How to find it
 ----- | ------------------ | -------------
@@ -66,7 +76,7 @@ If you joined a private group and cannot create invite links, you still have a f
 
 Pick whichever option your group permissions allow. Once you have the numeric ID, fill `target.target_chat_id` in `config.toml`.
 
-## 4. Control chat (`[control]`)
+## 5. Control chat (`[control]`)
 
 Field | Description | Recommendation
 ----- | ----------- | --------------
@@ -106,7 +116,7 @@ The General topic always uses ID `1`. When topic routing is disabled, tgwatch po
 
 If you only want the General topic, you can omit `topic_user_map` and keep `topic_routing_enabled = false`.
 
-## 5. Local storage (`[storage]`)
+## 6. Local storage (`[storage]`)
 
 Field | Description | Default
 ----- | ----------- | -------
@@ -115,7 +125,7 @@ Field | Description | Default
 
 You may leave the defaults or point them to any writable path. The `doctor` command verifies that the directories exist (or can be created) and that the DB file is writable.
 
-## 6. Reporting (`[reporting]`)
+## 7. Reporting (`[reporting]`)
 
 Field | Description | Default
 ----- | ----------- | -------
@@ -126,20 +136,20 @@ Field | Description | Default
 
 During each window, tgwatch writes the HTML report to `reports_dir`, uploads that file to the control chat, and then streams the window内的每条消息（文本 + 引用 + 媒体）到控制聊天，方便在手机端查看。Reply sections in each report include any quoted images/documents so you can see the full context without opening Telegram.
 
-## 7. Display (`[display]`)
+## 8. Display (`[display]`)
 
 Field | Description | Default
 ----- | ----------- | -------
 `show_ids` | Whether control-chat pushes append `(ID)` to aliases/usernames. | `true`
 `time_format` | Timestamp format for control-chat pushes (`strftime` syntax, e.g., `%Y.%m.%d %H:%M:%S (%Z)`). Leave blank to use the default. | `%Y.%m.%d %H:%M:%S (%Z)`
 
-## 8. Notifications (`[notifications]`)
+## 9. Notifications (`[notifications]`)
 
 Field | Description | Default
 ----- | ----------- | -------
 `bark_key` | Optional Bark key for push notifications. When set, reports, heartbeats, and error alerts are mirrored to your phone under the `Telegram Watch` group. | _(empty)_
 
-## 9. Validate the configuration
+## 10. Validate the configuration
 
 After editing `config.toml`, run:
 

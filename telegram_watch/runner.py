@@ -34,6 +34,24 @@ from .timeutils import parse_since_spec, utc_now
 logger = logging.getLogger(__name__)
 
 
+def _role_label(role: str) -> str:
+    if role == "primary":
+        return "primary account (A)"
+    if role == "sender":
+        return "sender account (B)"
+    return "account"
+
+
+def _phone_prompt(role: str) -> str:
+    label = _role_label(role)
+    print(f"Next: log in {label}.")
+    return input(f"{label} phone (or bot token): ")
+
+
+async def _start_client(client: TelegramClient, role: str) -> None:
+    await client.start(phone=lambda: _phone_prompt(role))
+
+
 async def run_once(
     config: Config,
     since: datetime,
@@ -42,7 +60,7 @@ async def run_once(
 ) -> Path:
     """Fetch messages for a window, store them, and return report path."""
     client = _build_client(config)
-    await client.start()
+    await _start_client(client, "primary")
     try:
         captures = await _collect_window(client, config, since)
     finally:
@@ -54,11 +72,15 @@ async def run_once(
         stored = fetch_messages_between(conn, config.target.tracked_user_ids, since, until)
     report_path = generate_report(stored, config, since, until)
     if push:
-        client = _build_client(config)
-        await client.start()
+        sender_client = await _start_sender_client(config)
+        send_client = sender_client
+        sender_active = sender_client is not None
+        if send_client is None:
+            send_client = _build_client(config)
+            await _start_client(send_client, "primary")
         try:
             await _send_report_bundle(
-                client,
+                send_client,
                 config,
                 stored,
                 since,
@@ -68,8 +90,30 @@ async def run_once(
                     f"(since {since_label})" if since_label else None
                 ),
             )
+        except Exception:
+            if sender_active:
+                logger.warning("Sender account failed; retrying report push with primary account.")
+                await send_client.disconnect()
+                primary = _build_client(config)
+                await primary.start()
+                try:
+                    await _send_report_bundle(
+                        primary,
+                        config,
+                        stored,
+                        since,
+                        until,
+                        report_path,
+                        bark_context=(
+                            f"(since {since_label})" if since_label else None
+                        ),
+                    )
+                finally:
+                    await primary.disconnect()
+                return report_path
+            raise
         finally:
-            await client.disconnect()
+            await send_client.disconnect()
     return report_path
 
 
@@ -81,15 +125,25 @@ async def run_daemon(config: Config) -> None:
     """Run watcher daemon."""
     client = _build_client(config)
     activity_tracker = _ActivityTracker()
-    await client.start()
+    await _start_client(client, "primary")
+    sender_client = await _start_sender_client(config)
+    send_client = sender_client or client
+    fallback_client = client if sender_client else None
     me = await client.get_me()
     self_user_id = int(me.id)
     logger.info("Logged in as %s", getattr(me, "username", self_user_id))
 
-    summary_loop = _SummaryLoop(config, client, activity_tracker)
-    heartbeat_loop = _HeartbeatLoop(config, client, activity_tracker)
+    summary_loop = _SummaryLoop(config, send_client, activity_tracker, fallback_client=fallback_client)
+    heartbeat_loop = _HeartbeatLoop(config, send_client, activity_tracker, fallback_client=fallback_client)
     target_handler = _TargetHandler(config, client)
-    control_handler = _ControlHandler(config, client, self_user_id, activity_tracker)
+    control_handler = _ControlHandler(
+        config,
+        client,
+        send_client,
+        self_user_id,
+        activity_tracker,
+        fallback_client=fallback_client,
+    )
 
     client.add_event_handler(
         target_handler.handle,
@@ -105,11 +159,13 @@ async def run_daemon(config: Config) -> None:
     try:
         await client.run_until_disconnected()
     except Exception as exc:
-        await _send_error_notification(client, config, exc)
+        await _send_error_notification(send_client, config, exc, fallback_client=fallback_client)
         raise
     finally:
         await heartbeat_loop.stop()
         await summary_loop.stop()
+        if sender_client:
+            await sender_client.disconnect()
         await client.disconnect()
 
 
@@ -121,6 +177,34 @@ def _build_client(config: Config) -> TelegramClient:
         config.telegram.api_id,
         config.telegram.api_hash,
     )
+
+
+def _build_sender_client(config: Config) -> TelegramClient | None:
+    if config.sender is None:
+        return None
+    session_path = config.sender.session_file
+    session_path.parent.mkdir(parents=True, exist_ok=True)
+    return TelegramClient(
+        str(session_path),
+        config.telegram.api_id,
+        config.telegram.api_hash,
+    )
+
+
+async def _start_sender_client(config: Config) -> TelegramClient | None:
+    sender = _build_sender_client(config)
+    if sender is None:
+        return None
+    try:
+        await _start_client(sender, "sender")
+    except Exception as exc:
+        logger.warning("Failed to start sender session: %s", exc)
+        try:
+            await sender.disconnect()
+        except Exception:
+            pass
+        return None
+    return sender
 
 
 async def _collect_window(
@@ -299,13 +383,18 @@ class _ControlHandler:
         self,
         config: Config,
         client: TelegramClient,
+        send_client: TelegramClient,
         owner_id: int,
         tracker: "_ActivityTracker",
+        *,
+        fallback_client: TelegramClient | None = None,
     ):
         self.config = config
         self.client = client
+        self.send_client = send_client
         self.owner_id = owner_id
         self._tracker = tracker
+        self._fallback_client = fallback_client
 
     async def handle(self, event: events.NewMessage.Event) -> None:
         if int(getattr(event.message, "sender_id", 0)) != self.owner_id:
@@ -316,7 +405,7 @@ class _ControlHandler:
         parts = text.split()
         command = parts[0]
         if command == "/help":
-            await _reply(event, _HELP_TEXT)
+            await _reply(event, _HELP_TEXT, client=self.send_client, fallback_client=self._fallback_client)
             return
         if command == "/last":
             await self._cmd_last(event, parts[1:])
@@ -327,7 +416,7 @@ class _ControlHandler:
         if command == "/export":
             await self._cmd_export(event, parts[1:])
             return
-        await _reply(event, "Unknown command. Use /help")
+        await _reply(event, "Unknown command. Use /help", client=self.send_client, fallback_client=self._fallback_client)
 
     async def _cmd_last(self, event: events.NewMessage.Event, args: Sequence[str]) -> None:
         if not args:
@@ -336,58 +425,58 @@ class _ControlHandler:
         try:
             user_id = await self._resolve_user(args[0])
         except ValueError as exc:
-            await _reply(event, f"Cannot resolve user: {exc}")
+            await _reply(event, f"Cannot resolve user: {exc}", client=self.send_client, fallback_client=self._fallback_client)
             return
         if user_id not in self.config.target.tracked_user_ids:
-            await _reply(event, f"User {user_id} not in tracked list.")
+            await _reply(event, f"User {user_id} not in tracked list.", client=self.send_client, fallback_client=self._fallback_client)
             return
         try:
             limit = int(args[1]) if len(args) > 1 else 5
         except ValueError:
-            await _reply(event, "Limit must be an integer.")
+            await _reply(event, "Limit must be an integer.", client=self.send_client, fallback_client=self._fallback_client)
             return
         if limit <= 0:
-            await _reply(event, "Limit must be > 0.")
+            await _reply(event, "Limit must be > 0.", client=self.send_client, fallback_client=self._fallback_client)
             return
         with db_session(self.config.storage.db_path) as conn:
             messages = fetch_recent_messages(conn, user_id, limit)
         if not messages:
-            await _reply(event, "No messages stored yet.")
+            await _reply(event, "No messages stored yet.", client=self.send_client, fallback_client=self._fallback_client)
             return
         label = self.config.describe_user(user_id)
         lines = [f"Last {len(messages)} messages for {label}:"]
         for msg in messages:
             lines.append(_format_message_line(msg))
-        await _reply(event, "\n".join(lines))
+        await _reply(event, "\n".join(lines), client=self.send_client, fallback_client=self._fallback_client)
 
     async def _cmd_since(self, event: events.NewMessage.Event, args: Sequence[str]) -> None:
         if not args:
-            await _reply(event, "Usage: /since <Nh|Nm|ISO>")
+            await _reply(event, "Usage: /since <Nh|Nm|ISO>", client=self.send_client, fallback_client=self._fallback_client)
             return
         try:
             since = parse_since_spec(args[0], now=utc_now())
         except ValueError as exc:
-            await _reply(event, str(exc))
+            await _reply(event, str(exc), client=self.send_client, fallback_client=self._fallback_client)
             return
         with db_session(self.config.storage.db_path) as conn:
             counts = fetch_summary_counts(conn, self.config.target.tracked_user_ids, since)
         if not counts:
-            await _reply(event, "No messages in that window.")
+            await _reply(event, "No messages in that window.", client=self.send_client, fallback_client=self._fallback_client)
             return
         lines = [f"Summary since {since.isoformat()}"]
         for user_id in sorted(counts):
             label = self.config.describe_user(user_id)
             lines.append(f"- {label}: {counts[user_id]} message(s)")
-        await _reply(event, "\n".join(lines))
+        await _reply(event, "\n".join(lines), client=self.send_client, fallback_client=self._fallback_client)
 
     async def _cmd_export(self, event: events.NewMessage.Event, args: Sequence[str]) -> None:
         if not args:
-            await _reply(event, "Usage: /export <Nh|Nm|ISO>")
+            await _reply(event, "Usage: /export <Nh|Nm|ISO>", client=self.send_client, fallback_client=self._fallback_client)
             return
         try:
             since = parse_since_spec(args[0], now=utc_now())
         except ValueError as exc:
-            await _reply(event, str(exc))
+            await _reply(event, str(exc), client=self.send_client, fallback_client=self._fallback_client)
             return
         until = utc_now()
         with db_session(self.config.storage.db_path) as conn:
@@ -396,13 +485,14 @@ class _ControlHandler:
             )
         report = generate_report(messages, self.config, since, until)
         await _send_report_bundle(
-            self.client,
+            self.send_client,
             self.config,
             messages,
             since,
             until,
             report,
             tracker=self._tracker,
+            fallback_client=self._fallback_client,
         )
 
     async def _resolve_user(self, arg: str) -> int:
@@ -439,6 +529,8 @@ class _SummaryLoop:
         config: Config,
         client: TelegramClient,
         tracker: "_ActivityTracker",
+        *,
+        fallback_client: TelegramClient | None = None,
     ):
         self.config = config
         self.client = client
@@ -446,6 +538,7 @@ class _SummaryLoop:
         self._task: asyncio.Task | None = None
         self._last_summary = utc_now()
         self._tracker = tracker
+        self._fallback_client = fallback_client
 
     def start(self) -> None:
         self._task = asyncio.create_task(self._run())
@@ -494,6 +587,7 @@ class _SummaryLoop:
             report,
             tracker=self._tracker,
             bark_context=f"({_format_interval_label(self.config.reporting.summary_interval_minutes)})",
+            fallback_client=self._fallback_client,
         )
 
 
@@ -506,12 +600,15 @@ class _HeartbeatLoop:
         config: Config,
         client: TelegramClient,
         tracker: "_ActivityTracker",
+        *,
+        fallback_client: TelegramClient | None = None,
     ):
         self.config = config
         self.client = client
         self.tracker = tracker
         self._stop = asyncio.Event()
         self._task: asyncio.Task | None = None
+        self._fallback_client = fallback_client
 
     def start(self) -> None:
         self._task = asyncio.create_task(self._run())
@@ -541,8 +638,9 @@ class _HeartbeatLoop:
         if not self.tracker.should_send_heartbeat(now, self._IDLE_SECONDS):
             return
         try:
-            await _send_with_backoff(
+            await _send_message_with_fallback(
                 self.client,
+                self._fallback_client,
                 self.config.control.control_chat_id,
                 "Watcher is still running",
             )
@@ -589,6 +687,7 @@ async def _send_report_bundle(
     report_path: Path,
     tracker: "_ActivityTracker | None" = None,
     bark_context: str | None = None,
+    fallback_client: TelegramClient | None = None,
 ) -> None:
     window = f"{since.isoformat()} → {(until.isoformat() if until else 'now')}"
     control = config.control.control_chat_id
@@ -601,17 +700,19 @@ async def _send_report_bundle(
             since,
             until,
             report_path.parent,
+            fallback_client=fallback_client,
         )
-        await _send_messages_to_control(client, config, control, messages)
+        await _send_messages_to_control(client, config, control, messages, fallback_client=fallback_client)
     else:
         caption = f"tgwatch report\nWindow: {window}\nMessages: {len(messages)}"
-        await _send_file_with_backoff(
+        await _send_file_with_fallback(
             client,
+            fallback_client,
             control,
             report_path,
             caption=caption,
         )
-        await _send_messages_to_control(client, config, control, messages)
+        await _send_messages_to_control(client, config, control, messages, fallback_client=fallback_client)
     if tracker:
         tracker.mark_activity()
     counts_text = _format_user_counts(messages, config)
@@ -631,18 +732,28 @@ async def _send_messages_to_control(
     config: Config,
     control_chat_id: int,
     messages: Sequence[DbMessage],
+    *,
+    fallback_client: TelegramClient | None = None,
 ) -> None:
     for message in messages:
         reply_to = _topic_reply_id_for_message(config, message)
         text = _format_control_message(message, config)
-        await _send_with_backoff(
+        await _send_message_with_fallback(
             client,
+            fallback_client,
             control_chat_id,
             text,
             parse_mode="html",
             reply_to=reply_to,
         )
-        await _send_media_for_message(client, control_chat_id, message, config, reply_to=reply_to)
+        await _send_media_for_message(
+            client,
+            control_chat_id,
+            message,
+            config,
+            reply_to=reply_to,
+            fallback_client=fallback_client,
+        )
 
 
 async def _send_media_for_message(
@@ -651,6 +762,8 @@ async def _send_media_for_message(
     message: DbMessage,
     config: Config,
     reply_to: int | None,
+    *,
+    fallback_client: TelegramClient | None = None,
 ) -> None:
     if not message.media:
         return
@@ -672,8 +785,9 @@ async def _send_media_for_message(
             )
         else:
             caption = f"Media for {sender_label} — message #{message.message_id}"
-        await _send_file_with_backoff(
+        await _send_file_with_fallback(
             client,
+            fallback_client,
             control_chat_id,
             file_path,
             caption=caption,
@@ -746,6 +860,8 @@ async def _send_topic_reports(
     since: datetime,
     until: datetime | None,
     report_dir: Path,
+    *,
+    fallback_client: TelegramClient | None = None,
 ) -> None:
     grouped: dict[int, list[DbMessage]] = {}
     for message in messages:
@@ -769,8 +885,9 @@ async def _send_topic_reports(
             f"Messages: {len(items)}"
         )
         reply_to = _topic_reply_id_for_user(config, user_id)
-        await _send_file_with_backoff(
+        await _send_file_with_fallback(
             client,
+            fallback_client,
             control_chat_id,
             report_path,
             caption=caption,
@@ -854,6 +971,40 @@ async def _send_file_with_backoff(
     await _with_floodwait(client.send_file, target, file=file_path, **kwargs)
 
 
+async def _send_message_with_fallback(
+    client: TelegramClient,
+    fallback_client: TelegramClient | None,
+    entity: int | str,
+    message: str,
+    **kwargs,
+) -> None:
+    try:
+        await _send_with_backoff(client, entity, message, **kwargs)
+        return
+    except Exception as exc:
+        if fallback_client is None or fallback_client is client:
+            raise
+        logger.warning("Sender failed to send message; retrying with primary: %s", exc)
+    await _send_with_backoff(fallback_client, entity, message, **kwargs)
+
+
+async def _send_file_with_fallback(
+    client: TelegramClient,
+    fallback_client: TelegramClient | None,
+    entity: int | str,
+    file_path: Path,
+    **kwargs,
+) -> None:
+    try:
+        await _send_file_with_backoff(client, entity, file_path, **kwargs)
+        return
+    except Exception as exc:
+        if fallback_client is None or fallback_client is client:
+            raise
+        logger.warning("Sender failed to send file; retrying with primary: %s", exc)
+    await _send_file_with_backoff(fallback_client, entity, file_path, **kwargs)
+
+
 async def _resolve_entity(
     client: TelegramClient,
     entity: int | str,
@@ -875,10 +1026,18 @@ async def _get_self_id(client: TelegramClient) -> int:
     return cached
 
 
-async def _reply(event: events.NewMessage.Event, text: str) -> None:
+async def _reply(
+    event: events.NewMessage.Event,
+    text: str,
+    *,
+    client: TelegramClient | None = None,
+    fallback_client: TelegramClient | None = None,
+) -> None:
     chat_id = int(getattr(event.message, "chat_id", event.chat_id))
-    await _send_with_backoff(
-        event.client,
+    send_client = client or event.client
+    await _send_message_with_fallback(
+        send_client,
+        fallback_client,
         chat_id,
         text,
         reply_to=event.message.id,
@@ -907,6 +1066,8 @@ async def _send_error_notification(
     client: TelegramClient,
     config: Config,
     exc: Exception,
+    *,
+    fallback_client: TelegramClient | None = None,
 ) -> None:
     summary = "".join(
         traceback.format_exception_only(type(exc), exc)
@@ -916,8 +1077,9 @@ async def _send_error_notification(
         f"{summary}"
     )
     try:
-        await _send_with_backoff(
+        await _send_message_with_fallback(
             client,
+            fallback_client,
             config.control.control_chat_id,
             message,
         )

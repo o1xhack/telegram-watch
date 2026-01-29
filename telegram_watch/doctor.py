@@ -32,6 +32,8 @@ def run_doctor(config: Config) -> None:
             _check_dir("reports dir", config.reporting.reports_dir),
         ]
     )
+    if config.sender is not None:
+        checks.append(_check_dir("sender session dir", config.sender.session_file.parent))
 
     checks.append(_check_db(config))
 

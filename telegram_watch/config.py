@@ -29,6 +29,11 @@ class TelegramConfig:
 
 
 @dataclass(frozen=True)
+class SenderConfig:
+    session_file: Path
+
+
+@dataclass(frozen=True)
 class TargetConfig:
     target_chat_id: int
     tracked_user_ids: tuple[int, ...]
@@ -71,6 +76,7 @@ class NotificationConfig:
 @dataclass(frozen=True)
 class Config:
     telegram: TelegramConfig
+    sender: SenderConfig | None
     target: TargetConfig
     control: ControlConfig
     storage: StorageConfig
@@ -106,6 +112,7 @@ def load_config(path: Path) -> Config:
     base_dir = path.parent.resolve()
 
     telegram_cfg = _parse_telegram(data.get("telegram") or {}, base_dir)
+    sender_cfg = _parse_sender(data.get("sender"), base_dir, telegram_cfg)
     target_cfg = _parse_target(data.get("target") or {})
     control_cfg = _parse_control(data.get("control") or {}, target_cfg.tracked_user_ids)
     storage_cfg = _parse_storage(data.get("storage") or {}, base_dir)
@@ -115,6 +122,7 @@ def load_config(path: Path) -> Config:
 
     return Config(
         telegram=telegram_cfg,
+        sender=sender_cfg,
         target=target_cfg,
         control=control_cfg,
         storage=storage_cfg,
@@ -133,6 +141,24 @@ def _parse_telegram(raw: dict[str, Any], base_dir: Path) -> TelegramConfig:
     session_file_raw = raw.get("session_file", "data/tgwatch.session")
     session_file = _resolve_path(session_file_raw, base_dir)
     return TelegramConfig(api_id=api_id, api_hash=api_hash, session_file=session_file)
+
+
+def _parse_sender(
+    raw: dict[str, Any] | None,
+    base_dir: Path,
+    telegram_cfg: TelegramConfig,
+) -> SenderConfig | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ConfigError("sender must be a table")
+    session_file_raw = raw.get("session_file")
+    if not session_file_raw:
+        raise ConfigError("sender.session_file is required when [sender] is set")
+    session_file = _resolve_path(session_file_raw, base_dir)
+    if session_file == telegram_cfg.session_file:
+        raise ConfigError("sender.session_file must differ from telegram.session_file")
+    return SenderConfig(session_file=session_file)
 
 
 def _parse_target(raw: dict[str, Any]) -> TargetConfig:
