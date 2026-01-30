@@ -420,7 +420,12 @@ class _ControlHandler:
 
     async def _cmd_last(self, event: events.NewMessage.Event, args: Sequence[str]) -> None:
         if not args:
-            await _reply(event, "Usage: /last <user_id> [N]")
+            await _reply(
+                event,
+                "Usage: /last <user_id> [N]",
+                client=self.send_client,
+                fallback_client=self._fallback_client,
+            )
             return
         try:
             user_id = await self._resolve_user(args[0])
