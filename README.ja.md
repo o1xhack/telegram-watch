@@ -9,6 +9,7 @@
 Mac 上で完結する Telegram ウォッチャー（Telethon 製）。主なポイントは次のとおりです。
 
 - **ユーザーアカウントのみ**：Bot ではなく Telegram のユーザーアカウント（MTProto）で監視します。
+- **送信アカウント分流（任意）**：コントロールチャットの送信を第2アカウント経由にして、プライマリアカウントで通知を受け取れます。
 - **ユーザー別ルーティング**：特定ユーザーだけ追跡し、必要ならコントロールチャットの Topic に分流（未設定は General）。
 - **実用的なレポート**：任意のウィンドウで HTML レポートを作成し、コントロールチャットへ送信、`MSG` リンクで元メッセージへ戻れます。
 - **コンテキスト保持**：引用テキストとメディアのスナップショットを SQLite とローカルに保存。
@@ -17,6 +18,7 @@ Mac 上で完結する Telegram ウォッチャー（Telethon 製）。主なポ
 ## 機能一覧
 
 - Telegram のユーザーアカウントでログイン（MTProto、Bot 不要）。
+- 任意で第2アカウント経由の送信にし、プライマリアカウントの新着通知を維持。
 - 複数のユーザー ID を同時に追跡し、エイリアスも設定可能。
 - コントロールチャットへレポートとメッセージを送信し、`/last`・`/since`・`/export` で素早く確認。
 - Telegram の Topic（テーマ）ごとにユーザーを振り分け可能。未設定は General に送信。
@@ -78,6 +80,7 @@ python -m pip install -e .
 
    - `telegram.api_id` / `telegram.api_hash`
    - `telegram.session_file`（デフォルト `data/tgwatch.session`）
+   - `[sender] session_file`（任意：通知復元のために送信専用の第二アカウントを使う場合）
    - `target.target_chat_id`（監視対象グループ/チャンネルの ID）
    - `target.tracked_user_ids`（追跡するユーザー ID の配列）
    - `[target.tracked_user_aliases]`（オプション：ID と表示名の対応表）

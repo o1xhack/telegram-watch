@@ -9,6 +9,7 @@
 Fully local Telegram watcher powered by Telethon. Key highlights:
 
 - **User-account only** – logs in with your own Telegram account (MTProto, not a Bot) and watches a target supergroup/channel.
+- **Optional sender routing** – route control-chat sends via a second account so your primary account still receives new-message notifications.
 - **Per-user routing** – track specific user IDs and optionally route their control-chat pushes into forum topics (General fallback by default).
 - **Actionable reports** – builds HTML reports on a configurable window, uploads them to the control chat, and streams tracked messages with clickable `MSG` links.
 - **Context preserved** – captures reply text + media snapshots and keeps everything in SQLite + local media storage.
@@ -17,6 +18,7 @@ Fully local Telegram watcher powered by Telethon. Key highlights:
 ## Features
 
 - Log in with your own Telegram account (MTProto), no Bot required.
+- Optionally send control-chat updates via a second account so your primary account receives new-message notifications.
 - Track multiple user IDs at once, with optional aliases for readability.
 - Push reports + messages to a control chat with handy commands (`/last`, `/since`, `/export`).
 - Optionally split pushes by Telegram Topics (主题) so each user goes to their own topic; unconfigured users fall back to the General topic.
@@ -78,6 +80,7 @@ python -m pip install -e .
 
    - `telegram.api_id` / `telegram.api_hash`
    - `telegram.session_file` (defaults to `data/tgwatch.session`)
+   - `[sender] session_file` (optional second-account session used to send control messages so the primary account can receive notifications)
    - `target.target_chat_id` (the group/channel ID)
    - `target.tracked_user_ids` (list of numeric user IDs to monitor)
    - `[target.tracked_user_aliases]` (optional ID→alias mapping for nicer reports)

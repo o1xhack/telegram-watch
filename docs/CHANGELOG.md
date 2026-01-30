@@ -4,6 +4,11 @@
 
 > Entries are arranged from newest to oldest so the latest release notes stay at the top. Each bullet references the requirement(s) that introduced the change.
 
+## 0.3.0 — 2026-01-29
+- Added dual-account bridging so a sender account can post control-group updates and restore notifications for the primary account (REQ-20260129-002-bridge-implementation).
+- Clarified login prompts so primary vs sender accounts are labeled during dual-account setup (REQ-20260129-003-sender-login-prompt).
+- Made dual-account login prompts user-friendly and clearly labeled in the terminal (REQ-20260129-004-friendly-login-prompts).
+
 ## 0.2.0 — 2026-01-25
 - Added optional forum topic routing so tracked users can be mapped to specific control-group topics while preserving the default General-topic push behavior (REQ-20260125-002-topic-routing).
 - Restored reply blockquote formatting in control-chat pushes to avoid extra blank lines between reply header and quoted text (REQ-20260125-003-reply-blockquote-regression).

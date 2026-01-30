@@ -21,6 +21,9 @@ def test_load_config_resolves_relative_paths(tmp_path):
         api_hash = "abcdefghijk"
         session_file = "sessions/user.session"
 
+        [sender]
+        session_file = "sessions/sender.session"
+
         [target]
         target_chat_id = -1001
         tracked_user_ids = [123, 456]
@@ -44,6 +47,8 @@ def test_load_config_resolves_relative_paths(tmp_path):
     assert config.storage.media_dir.is_absolute()
     assert config.reporting.reports_dir.is_absolute()
     assert config.telegram.session_file.is_absolute()
+    assert config.sender is not None
+    assert config.sender.session_file.is_absolute()
 
 
 def test_missing_fields_raise(tmp_path):
@@ -96,6 +101,34 @@ def test_tracked_user_aliases_optional(tmp_path):
     config = load_config(cfg_path)
     assert config.target.tracked_user_aliases[123] == "Alice"
     assert config.describe_user(123) == "Alice (123)"
+
+
+def test_sender_session_must_differ_from_primary(tmp_path):
+    cfg_path = write_config(
+        tmp_path,
+        """
+        [telegram]
+        api_id = 42
+        api_hash = "abcdefghijk"
+        session_file = "sessions/shared.session"
+
+        [sender]
+        session_file = "sessions/shared.session"
+
+        [target]
+        target_chat_id = -1001
+        tracked_user_ids = [123]
+
+        [control]
+        control_chat_id = -1002
+
+        [storage]
+        db_path = "data/app.sqlite3"
+        media_dir = "data/media"
+        """,
+    )
+    with pytest.raises(ConfigError):
+        load_config(cfg_path)
 
 
 def test_aliases_must_match_tracked_users(tmp_path):

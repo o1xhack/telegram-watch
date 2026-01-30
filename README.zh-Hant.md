@@ -9,6 +9,7 @@
 完全在本地運作的 Telegram 監看工具，基於 Telethon 實作。核心亮點：
 
 - **使用者帳號登入**：以 Telegram 使用者帳號（MTProto，非 Bot）監控目標群/頻道。
+- **可選第二帳號分流**：控制群訊息可由第二帳號發送，讓主帳號仍能收到新訊息通知。
 - **依使用者分流**：只追蹤指定使用者，控制群可選用 Topic 分流，預設回到 General。
 - **可用報告**：依時間窗產生 HTML 報告，上傳控制群並逐條推送訊息，`MSG` 可直達原訊息。
 - **上下文完整**：保存引用文字與媒體快照，寫入 SQLite 與本機媒體目錄。
@@ -17,6 +18,7 @@
 ## 功能列表
 
 - 使用 Telegram 使用者帳號登入（MTProto），無需 Bot。
+- 可選由第二帳號發送控制群訊息，使主帳號仍能收到新訊息通知。
 - 可同時追蹤多位使用者 ID，並支援別名方便辨識。
 - 控制群推送報告與訊息，搭配命令（`/last`、`/since`、`/export`）快速查詢。
 - 可選按 TG Topic（主題）分流到不同話題；未設定則回到 General 主題。
@@ -78,6 +80,7 @@ python -m pip install -e .
 
    - `telegram.api_id` / `telegram.api_hash`
    - `telegram.session_file`（預設 `data/tgwatch.session`）
+   - `[sender] session_file`（可選：用第二帳號發送以讓主帳號收到通知）
    - `target.target_chat_id`（目標群/頻道 ID）
    - `target.tracked_user_ids`（要監控的使用者 ID 列表）
    - `[target.tracked_user_aliases]`（可選 ID→別名對應）

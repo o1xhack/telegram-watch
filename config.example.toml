@@ -3,6 +3,9 @@ api_id = 123456
 api_hash = "PUT_YOUR_API_HASH_HERE"
 session_file = "data/tgwatch.session"
 
+# [sender]
+# session_file = "data/tgwatch_sender.session"  # optional: second account session for bridge sending
+
 [target]
 target_chat_id = -1001234567890
 tracked_user_ids = [11111111, 22222222]

@@ -47,6 +47,7 @@ def build_config(tmp_path: Path) -> Config:
     notifications = NotificationConfig(bark_key=None)
     return Config(
         telegram=telegram,
+        sender=None,
         target=target,
         control=control,
         storage=storage,
@@ -114,6 +115,7 @@ async def test_summary_loop_passes_tracker_and_bark_context(monkeypatch, tmp_pat
         *,
         tracker=None,
         bark_context=None,
+        fallback_client=None,
     ):
         captured["tracker"] = tracker
         captured["bark_context"] = bark_context
