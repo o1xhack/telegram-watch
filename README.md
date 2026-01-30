@@ -44,7 +44,7 @@ Choose **either** a built-in `venv` or a Conda environment; both work as long as
 Install a fixed version from a Git tag so you always get the exact release:
 
 ```bash
-pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.2.0"
+pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.3.1"
 
 python -m tgwatch --help
 ```

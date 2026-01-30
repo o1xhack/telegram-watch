@@ -44,7 +44,7 @@
 直接從 Git Tag 安裝穩定版：
 
 ```bash
-pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.2.0"
+pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.3.1"
 
 python -m tgwatch --help
 ```
