@@ -4,27 +4,21 @@
 
 [Follow on X](https://x.com/o1xhack) · [Telegram EN channel](https://t.me/lalabeng) · [Telegram 中文频道](https://t.me/o1xinsight)
 
-## Highlights
+## Key Features
 
-Fully local Telegram watcher powered by Telethon. Key highlights:
+Turn noisy Telegram groups into a personal, searchable signal feed — **fully local, no Bot required**.
 
-- **User-account only** – logs in with your own Telegram account (MTProto, not a Bot) and watches a target supergroup/channel.
-- **Optional sender routing** – route control-chat sends via a second account so your primary account still receives new-message notifications.
-- **Per-user routing** – track specific user IDs and optionally route their control-chat pushes into forum topics (General fallback by default).
-- **Actionable reports** – builds HTML reports on a configurable window, uploads them to the control chat, and streams tracked messages with clickable `MSG` links.
-- **Context preserved** – captures reply text + media snapshots and keeps everything in SQLite + local media storage.
-- **Operational safety** – heartbeat + error alerts, retention cleanup, FloodWait backoff, and optional Bark push.
+- **Follow the signal, not the noise**: Track a strict watchlist of high-value accounts inside large groups (filtered by user ID).
+- **Your Chat is the Dashboard**: Receive digests and live alerts in a private "Control Chat". Query anytime with `/last`, `/since`, or `/export` directly from your own account.
+- **Scheduled Digests + Live Stream**: Get auto-generated HTML reports with media context, plus a real-time stream of tracked messages linking back to the source (`MSG` link).
+- **Permanent Evidence Trail**: Messages and replies are archived in SQLite; media snapshots are saved locally for offline review.
+- **Auto-Organized via Topics**: Automatically route tracked users into their own Telegram Topics (forum mode) to keep conversations distinct.
+- **Set & Forget Reliability**: Built for the long haul with auto-retention cleanup, heartbeat alerts, and smart FloodWait handling.
+- **Privacy-First Architecture**: Runs 100% on your machine — no cloud, no third-party collectors, no data leakage.
+- **Cross-Platform Alerts**: Optional Bark mirroring to push summaries and errors to your phone outside of Telegram.
 
-## Features
 
-- Log in with your own Telegram account (MTProto), no Bot required.
-- Optionally send control-chat updates via a second account so your primary account receives new-message notifications.
-- Track multiple user IDs at once, with optional aliases for readability.
-- Push reports + messages to a control chat with handy commands (`/last`, `/since`, `/export`).
-- Optionally split pushes by Telegram Topics (主题) so each user goes to their own topic; unconfigured users fall back to the General topic.
-- Keep reply context together (quoted text + media) so conversations make sense.
-- HTML reports with inline images and clickable `MSG` links back to Telegram.
-- Automatic cleanup of old reports/media to keep disk usage in check.
+Perfect for: community operators, researchers, traders, or anyone who needs **signal extraction + local archiving** from Telegram. 
 
 The sections below cover installation, configuration, and usage.
 
@@ -37,36 +31,58 @@ The sections below cover installation, configuration, and usage.
 
 ## Installation
 
-Choose **either** a built-in `venv` or a Conda environment; both work as long as Python ≥ 3.11 is active.
+This project is not published as a PyPI package yet, so installation is done via Git (tagged release) or editable mode.
 
-### Option 0: Install a tagged release (recommended)
+### Step 1 — Install the package (recommended: tagged release)
 
-Install a fixed version from a Git tag so you always get the exact release:
+**Recommended (stable & reproducible): install a tagged release**
+
+> Use this if you just want to run `tgwatch` and keep your version pinned to a release tag.
 
 ```bash
 pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.3.1"
-
 python -m tgwatch --help
 ```
 
-### Option A: `python -m venv`
+**For development: editable install**
+
+> Use this if you're hacking on the code locally.
+
+```bash
+pip install -e .
+python -m tgwatch --help
+```
+
+### Step 2 — Create a Python environment (pick one)
+
+You can use either a built-in `venv` or a Conda environment. Both work as long as Python ≥ 3.11 is active.
+
+#### Option A: `python -m venv` (recommended)
 
 ```bash
 python3.11 -m venv .venv
 . .venv/bin/activate
-pip install -e .
+python -m pip install -U pip
 ```
 
-### Option B: Conda
+#### Option B: Conda
 
 ```bash
 conda create -n tgwatch python=3.11
 conda activate tgwatch
-python -m pip install -e .
+python -m pip install -U pip
 ```
 
-> Tip: keep exactly one environment active when running commands. The prompt should show either `(.venv)` or `(tgwatch)` before `python -m tgwatch ...`.  
-> The tagged-release command above always references the latest published tag (currently `v0.2.0`). Only update it after a new release is tagged.
+> Tip: keep exactly one environment active when running commands. The prompt should show either `(.venv)` or `(tgwatch)` before `python -m tgwatch ...`.
+
+### Step 3 — Continue with the same steps
+
+Once installed and your environment is active, the rest is the same for everyone:
+
+1) copy `config.example.toml` → `config.toml`  
+2) run `tgwatch doctor`  
+3) run `tgwatch once --since 2h --push` to test  
+4) run `tgwatch run` for daemon mode
 
 ## Configuration
 
@@ -96,6 +112,7 @@ python -m pip install -e .
 ### Bark key quick guide
 
 1. Install the Bark app on your phone and open it. Tap the gear icon → “复制设备码 (Copy Key)” to copy the device key (looks like `abc1234567890abcdef`).
+
 2. Paste the key into `config.toml`:
 
    ```toml
@@ -105,7 +122,7 @@ python -m pip install -e .
 
 3. Run `tgwatch run ...` as usual. Reports/heartbeats/errors will mirror to Bark under the “Telegram Watch” group.
 
-   See `docs/configuration.md` for step-by-step instructions on gathering Telegram IDs (including private groups without invite links), filling the credential fields, and choosing safe local storage paths.
+   See [docs/configuration.md](docs/configuration.md) for step-by-step instructions on gathering Telegram IDs (including private groups without invite links), filling the credential fields, and choosing safe local storage paths.
 
 > ⚠️ Never commit `config.toml`, session files, `data/`, or `reports/`. These contain private information.
 
@@ -127,7 +144,7 @@ Fetch tracked messages from the last window (e.g., 2 hours), save them to the DB
 
 ```bash
 python -m tgwatch once --config config.toml --since 2h
-# 加上 --push 可以把同一窗口的报告和消息推送到控制聊天，便于测试
+# With --push the report and messages will be pushed to the control chat (and Bark if configured)
 python -m tgwatch once --config config.toml --since 2h --push
 ```
 
@@ -142,9 +159,9 @@ python -m tgwatch run --config config.toml
 Run mode:
 
 - Listens to the target chat; when tracked users send messages, stores them (text, replies, media snapshots).
-- Captures reply context, including quoted text and media, so reports show the referenced screenshots.
+- Captures reply context, including quoted text and media snapshots, so reports show the referenced content.
 - At each `summary_interval_minutes` window (30 min, 120 min, etc.), it generates the HTML report, uploads the file to the control chat, then sequentially pushes every tracked message (text + reply info + media) from that window.
-- Reports embed media as Base64 data URIs so the file stays self-contained when opened in Telegram (files grow with large images).
+- Reports embed images directly in the HTML (Base64) so they display anywhere; if a file can’t be read, it falls back to a relative file path.
 - Listens for commands **from your own account** inside the control chat:
   - `/help`
   - `/last <user_id|@username> [N]`
@@ -164,7 +181,7 @@ pytest
 - Runs entirely on your Mac; no remote services or uploads.
 - Does not log API hashes, phone numbers, or chat contents.
 - Session + DB + media directories are `.gitignore`d; keep secrets local.
-- Flood-wait handling/backoff is included for login, downloads, and bot responses.
+- Flood-wait handling/backoff is applied to Telegram API calls (sending, downloads, entity lookups).
 
 ## Changelog
 
