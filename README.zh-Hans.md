@@ -4,29 +4,22 @@
 
 关注： [X/Twitter](https://x.com/o1xhack) · [Telegram 英文频道](https://t.me/lalabeng) · [Telegram 中文频道](https://t.me/o1xinsight)
 
-## 亮点
+## 关键特性
 
-全程在本地运行的 Telegram 监听工具，基于 Telethon 打造。核心亮点：
+把嘈杂的 Telegram 群/频道变成个人可查询的信号源 —— **完全本地、无需 Bot**。
 
-- **用户账号登录**：使用 Telegram 用户账号（MTProto，非 Bot）监控目标群/频道。
-- **可选第二账号分流**：控制群消息可由第二账号发送，让主账号仍能收到新消息通知。
-- **按用户分流**：只跟踪指定用户，控制群可选按 Topic 分流，默认回到 General。
-- **可用报告**：按窗口生成 HTML 报告，上传到控制群并逐条推送消息，`MSG` 可直达原消息。
-- **上下文完整**：保存引用文本与媒体快照，写入 SQLite + 本地媒体目录。
-- **运行稳定**：心跳/错误提示、保留清理、FloodWait 退避、可选 Bark 推送。
+- **只看重要的人**：在大群里只追踪少量高信号账号（按用户 ID 订阅）。
+- **控制群仪表盘**：在控制聊天（收藏消息或你控制的私密群）接收消息与摘要，并用简单指令按需查询（`/last`、`/since`、`/export`，仅你本人账号可用）。
+- **定时 HTML 摘要 + 消息流**：HTML 报告包含上下文与媒体快照，并逐条推送每条消息到控制群；每条消息都带可点击的 `MSG` 链接回到原消息。
+- **证据留存**：消息与引用文本存入 SQLite，媒体快照保存在磁盘，便于回溯与导出。
+- **自动分流**：可选把不同用户分流到各自 Topic（论坛模式），未配置回到 General。
+- **长期稳定**：保留清理、心跳/错误提示、FloodWait 退避，适配真实群运行。
+- **默认隐私优先**：完全本地运行，不上传、不依赖第三方采集。
+- **可选推送镜像**：如需手机提醒，可用 Bark 同步摘要/心跳/错误。
 
-## 功能列表
+适用场景：社区运营、研究人员、交易者或任何需要 **信号提取 + 本地归档** 的人。
 
-- 使用 Telegram 用户账号登录（MTProto），无需 Bot。
-- 可选由第二账号发送控制群消息，使主账号仍能收到新消息通知。
-- 支持同时追踪多个用户 ID，并可配置别名方便识别。
-- 控制群推送报告与消息，配套命令（`/last`、`/since`、`/export`）可快速查询。
-- 可选按 TG Topic（主题）分流到不同话题；未配置时默认回到 General 主题。
-- 引用上下文完整保留（引用文字 + 媒体），方便理解对话。
-- HTML 报告内嵌图片，并提供 `MSG` 链接直达 Telegram 原消息。
-- 自动清理旧报告/媒体，避免磁盘占用膨胀。
-
-以下章节介绍安装、配置与常用命令。
+以下章节介绍安装、配置与使用。
 
 ## 依赖
 
@@ -37,36 +30,58 @@
 
 ## 安装
 
-可选择系统自带的 `venv` 或 Conda，确保 Python ≥ 3.11。
+当前尚未发布到 PyPI，需要通过 Git 安装（标签版）或本地可编辑安装。
 
-### 方式 0：安装固定版本（推荐）
+### 第一步：安装包（推荐：标签版）
 
-直接从 Git Tag 安装稳定版本：
+**推荐（稳定且可复现）：安装标签版**
+
+> 只想运行 `tgwatch` 并固定版本时选择它。
 
 ```bash
-pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.2.0"
-
+pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.3.1"
 python -m tgwatch --help
 ```
 
-### 方式 A：`python -m venv`
+**开发用：可编辑安装**
+
+> 本地改代码时使用。
+
+```bash
+pip install -e .
+python -m tgwatch --help
+```
+
+### 第二步：创建 Python 环境（二选一）
+
+可用系统自带 `venv` 或 Conda，只要 Python ≥ 3.11 即可。
+
+#### 方式 A：`python -m venv`（推荐）
 
 ```bash
 python3.11 -m venv .venv
 . .venv/bin/activate
-pip install -e .
+python -m pip install -U pip
 ```
 
-### 方式 B：Conda
+#### 方式 B：Conda
 
 ```bash
 conda create -n tgwatch python=3.11
 conda activate tgwatch
-python -m pip install -e .
+python -m pip install -U pip
 ```
 
-> 提示：运行命令前只需激活一种环境（`.venv` 或 `conda`）。命令行前缀应显示 `(.venv)` 或 `(tgwatch)`。  
-> 上述安装命令始终指向「最近发布的 tag」（当前为 `v0.2.0`），只有在完成新版本发布并打 Tag 后才需要修改这里的示例。
+> 提示：运行命令前只需激活一种环境（`.venv` 或 `conda`）。命令行前缀应显示 `(.venv)` 或 `(tgwatch)`。
+
+### 第三步：继续完成相同流程
+
+安装完成并激活环境后：
+
+1) 复制 `config.example.toml` → `config.toml`
+2) 运行 `tgwatch doctor`
+3) 运行 `tgwatch once --since 2h --push` 做测试
+4) 运行 `tgwatch run` 进入守护模式
 
 ## 配置
 
@@ -105,7 +120,7 @@ python -m pip install -e .
 
 3. 启动 `tgwatch run ...`，报告/心跳/错误就会以 “Telegram Watch” 分组推送到 Bark。
 
-详细步骤、如何获取群 ID/用户 ID、路径选择等请参考 `docs/configuration.md`。
+详细步骤、如何获取群 ID/用户 ID、路径选择等请参考 [docs/configuration.md](docs/configuration.md)。
 
 > ⚠️ 不要将 `config.toml`、会话文件、`data/`、`reports/` 等敏感内容提交到版本管理。
 
@@ -141,9 +156,9 @@ python -m tgwatch run --config config.toml
 
 运行时：
 
-- 持续监听目标群，实时写入文本、引用、媒体。
+- 持续监听目标群，跟踪用户消息会被写入（文本、引用、媒体快照）。
 - 在每个 `summary_interval_minutes` 窗口结束时，生成 HTML 报告并推送到控制群，同时逐条发送该窗口内的跟踪消息。
-- HTML 报告的图片以内联 Base64 存储，可直接在 Telegram 中预览。
+- 报告内的图片默认以内联 Base64 存储；若文件读取失败，会退回相对路径。
 - 控制群支持以下命令（仅限你本人发起）：
   - `/help`
   - `/last <user_id|@username> [N]`
@@ -161,7 +176,11 @@ pytest
 - 完全在你的 Mac 上运行，不使用云端。
 - 不写入 API hash、手机号或聊天内容到日志。
 - `config.toml`、会话文件、数据目录均已加入 `.gitignore`。
-- Telethon 带有 Flood-wait 退避机制，登录、下载、推送更稳定。
+- Flood-wait 退避应用于 Telegram API 调用（发送、下载、实体解析）。
+
+## Changelog
+
+版本更新记录见 [docs/CHANGELOG.md](docs/CHANGELOG.md)。
 
 ## License
 
