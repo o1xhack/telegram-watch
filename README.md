@@ -92,22 +92,41 @@ Once installed and your environment is active, the rest is the same for everyone
    cp config.example.toml config.toml
    ```
 
-2. Edit `config.toml` and fill:
+   Tip: launch the local GUI to edit config without touching the file:
+
+   ```bash
+   tgwatch gui
+   ```
+
+2. Launch the local GUI (recommended) to edit config:
+
+   ```bash
+   tgwatch gui
+   ```
+
+   Directly editing `config.toml` is still supported, but discouraged because it is easier to make mistakes.
+
+3. If you choose to edit the file manually, fill:
 
    - `telegram.api_id` / `telegram.api_hash`
    - `telegram.session_file` (defaults to `data/tgwatch.session`)
    - `[sender] session_file` (optional second-account session used to send control messages so the primary account can receive notifications)
-   - `target.target_chat_id` (the group/channel ID)
-   - `target.tracked_user_ids` (list of numeric user IDs to monitor)
-   - `[target.tracked_user_aliases]` (optional ID→alias mapping for nicer reports)
-   - `control.control_chat_id` (where digests + commands live)
-   - `control.is_forum` / `control.topic_routing_enabled` / `[control.topic_user_map]` (optional per-user routing to Telegram Topics)
+   - `targets[].name` (a label for each target group)
+   - `targets[].target_chat_id` (the group/channel ID)
+   - `targets[].tracked_user_ids` (list of numeric user IDs to monitor)
+   - `targets[].summary_interval_minutes` (optional per-target report interval)
+   - `targets[].control_group` (optional; required when multiple control groups are configured)
+   - `[targets.tracked_user_aliases]` (optional ID→alias mapping for nicer reports)
+   - `control_groups.<name>.control_chat_id` (where digests + commands live)
+   - `control_groups.<name>.is_forum` / `control_groups.<name>.topic_routing_enabled` / `[control_groups.<name>.topic_user_map]` (optional per-user routing to Telegram Topics)
    - `storage.db_path` & `storage.media_dir`
-   - `reporting.reports_dir` & `reporting.summary_interval_minutes` (controls how often reports are delivered)
+   - `reporting.reports_dir` & `reporting.summary_interval_minutes` (default report interval if a target does not override it)
    - `reporting.timezone` (optional, e.g., `Asia/Shanghai`, `America/Los_Angeles`, `America/New_York`, `Asia/Tokyo`)
    - `reporting.retention_days` (defaults to 30; when `run` starts, reports older than this many days are deleted. Values > 180 prompt for confirmation.)
    - `[notifications] bark_key` (optional Bark key for mirror notifications)
    - `[display] show_ids` (default `true`) & `time_format` (strftime string) control how control-chat pushes render names/timestamps
+
+Single-group configs using `[target]` + `[control]` are still supported for backwards compatibility.
 
 ### Bark key quick guide
 
@@ -138,9 +157,17 @@ Validate config + directories and ensure the SQLite schema can be created:
 python -m tgwatch doctor --config config.toml
 ```
 
+### GUI (local config editor)
+
+Launch the local UI (default: `http://127.0.0.1:8765`) to manage targets/control groups. The browser opens automatically:
+
+```bash
+tgwatch gui
+```
+
 ### Once (batch report)
 
-Fetch tracked messages from the last window (e.g., 2 hours), save them to the DB, and render an HTML report under `reports/YYYY-MM-DD/HHMM/index.html`:
+Fetch tracked messages from the last window (e.g., 2 hours), save them to the DB, and render one HTML report per target under `reports/YYYY-MM-DD/HHMM/index.html`:
 
 ```bash
 python -m tgwatch once --config config.toml --since 2h
@@ -158,9 +185,9 @@ python -m tgwatch run --config config.toml
 
 Run mode:
 
-- Listens to the target chat; when tracked users send messages, stores them (text, replies, media snapshots).
+- Listens to each target chat; when tracked users send messages, stores them (text, replies, media snapshots).
 - Captures reply context, including quoted text and media snapshots, so reports show the referenced content.
-- At each `summary_interval_minutes` window (30 min, 120 min, etc.), it generates the HTML report, uploads the file to the control chat, then sequentially pushes every tracked message (text + reply info + media) from that window.
+- At each target’s `summary_interval_minutes` window (or the global default), it generates the HTML report, uploads the file to the mapped control group, then sequentially pushes every tracked message (text + reply info + media) from that window.
 - Reports embed images directly in the HTML (Base64) so they display anywhere; if a file can’t be read, it falls back to a relative file path.
 - Listens for commands **from your own account** inside the control chat:
   - `/help`

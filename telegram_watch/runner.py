@@ -15,7 +15,12 @@ from typing import Awaitable, Callable, Sequence, TypeVar
 from telethon import TelegramClient, events, errors
 from telethon.tl.custom import message as custom_message
 
-from .config import Config, DEFAULT_TIME_FORMAT
+from .config import (
+    Config,
+    ControlGroupConfig,
+    DEFAULT_TIME_FORMAT,
+    TargetGroupConfig,
+)
 from .links import build_message_link
 from .notifications import send_bark_notification
 from .reporting import generate_report
@@ -57,20 +62,39 @@ async def run_once(
     since: datetime,
     push: bool = False,
     since_label: str | None = None,
-) -> Path:
-    """Fetch messages for a window, store them, and return report path."""
+) -> list[Path]:
+    """Fetch messages for a window, store them, and return report paths."""
     client = _build_client(config)
     await _start_client(client, "primary")
     try:
-        captures = await _collect_window(client, config, since)
+        captures: list[tuple[StoredMessage, list[StoredMedia]]] = []
+        for target in config.targets:
+            captures.extend(await _collect_window(client, config, target, since))
     finally:
         await client.disconnect()
     until = utc_now()
+    stored_by_target: dict[str, list[DbMessage]] = {}
     with db_session(config.storage.db_path) as conn:
         for message, media in captures:
             persist_message(conn, message, media)
-        stored = fetch_messages_between(conn, config.target.tracked_user_ids, since, until)
-    report_path = generate_report(stored, config, since, until)
+        for target in config.targets:
+            stored_by_target[target.name] = fetch_messages_between(
+                conn,
+                target.tracked_user_ids,
+                since,
+                until,
+                chat_ids=[target.target_chat_id],
+            )
+    report_paths: list[Path] = []
+    for target in config.targets:
+        report_path = generate_report(
+            stored_by_target.get(target.name, []),
+            config,
+            since,
+            until,
+            target=target,
+        )
+        report_paths.append(report_path)
     if push:
         sender_client = await _start_sender_client(config)
         send_client = sender_client
@@ -79,16 +103,14 @@ async def run_once(
             send_client = _build_client(config)
             await _start_client(send_client, "primary")
         try:
-            await _send_report_bundle(
+            await _push_once_reports(
                 send_client,
                 config,
-                stored,
+                stored_by_target,
                 since,
                 until,
-                report_path,
-                bark_context=(
-                    f"(since {since_label})" if since_label else None
-                ),
+                report_paths,
+                bark_context=(f"(since {since_label})" if since_label else None),
             )
         except Exception:
             if sender_active:
@@ -97,24 +119,22 @@ async def run_once(
                 primary = _build_client(config)
                 await primary.start()
                 try:
-                    await _send_report_bundle(
+                    await _push_once_reports(
                         primary,
                         config,
-                        stored,
+                        stored_by_target,
                         since,
                         until,
-                        report_path,
-                        bark_context=(
-                            f"(since {since_label})" if since_label else None
-                        ),
+                        report_paths,
+                        bark_context=(f"(since {since_label})" if since_label else None),
                     )
                 finally:
                     await primary.disconnect()
-                return report_path
+                return report_paths
             raise
         finally:
             await send_client.disconnect()
-    return report_path
+    return report_paths
 
 
 async def run_daemon(config: Config) -> None:
@@ -133,9 +153,21 @@ async def run_daemon(config: Config) -> None:
     self_user_id = int(me.id)
     logger.info("Logged in as %s", getattr(me, "username", self_user_id))
 
-    summary_loop = _SummaryLoop(config, send_client, activity_tracker, fallback_client=fallback_client)
+    summary_loops: list[_SummaryLoop] = []
+    for target in config.targets:
+        control = config.control_groups[target.control_group or ""]
+        loop = _SummaryLoop(
+            config,
+            target,
+            control,
+            send_client,
+            activity_tracker,
+            fallback_client=fallback_client,
+        )
+        loop.start()
+        summary_loops.append(loop)
+
     heartbeat_loop = _HeartbeatLoop(config, send_client, activity_tracker, fallback_client=fallback_client)
-    target_handler = _TargetHandler(config, client)
     control_handler = _ControlHandler(
         config,
         client,
@@ -145,16 +177,17 @@ async def run_daemon(config: Config) -> None:
         fallback_client=fallback_client,
     )
 
-    client.add_event_handler(
-        target_handler.handle,
-        events.NewMessage(chats=[config.target.target_chat_id]),
-    )
+    for target in config.targets:
+        target_handler = _TargetHandler(config, client, target)
+        client.add_event_handler(
+            target_handler.handle,
+            events.NewMessage(chats=[target.target_chat_id]),
+        )
     client.add_event_handler(
         control_handler.handle,
-        events.NewMessage(chats=[config.control.control_chat_id]),
+        events.NewMessage(chats=list(config.control_by_chat_id.keys())),
     )
 
-    summary_loop.start()
     heartbeat_loop.start()
     try:
         await client.run_until_disconnected()
@@ -163,7 +196,8 @@ async def run_daemon(config: Config) -> None:
         raise
     finally:
         await heartbeat_loop.stop()
-        await summary_loop.stop()
+        for loop in summary_loops:
+            await loop.stop()
         if sender_client:
             await sender_client.disconnect()
         await client.disconnect()
@@ -210,11 +244,12 @@ async def _start_sender_client(config: Config) -> TelegramClient | None:
 async def _collect_window(
     client: TelegramClient,
     config: Config,
+    target: TargetGroupConfig,
     since: datetime,
 ) -> list[tuple[StoredMessage, list[StoredMedia]]]:
-    tracked = set(config.target.tracked_user_ids)
+    tracked = set(target.tracked_user_ids)
     captures: list[tuple[StoredMessage, list[StoredMedia]]] = []
-    async for msg in client.iter_messages(config.target.target_chat_id):
+    async for msg in client.iter_messages(target.target_chat_id):
         if msg.date is None:
             continue
         msg_dt = _ensure_tz(msg.date)
@@ -223,7 +258,7 @@ async def _collect_window(
         sender_id = getattr(msg, "sender_id", None)
         if sender_id is None or int(sender_id) not in tracked:
             continue
-        capture = await _capture_message(client, config, msg)
+        capture = await _capture_message(client, config, msg, chat_id_default=target.target_chat_id)
         if capture:
             captures.append(capture)
     captures.reverse()
@@ -234,11 +269,13 @@ async def _capture_message(
     client: TelegramClient,
     config: Config,
     message: custom_message.Message,
+    *,
+    chat_id_default: int | None = None,
 ) -> tuple[StoredMessage, list[StoredMedia]] | None:
     sender_id = getattr(message, "sender_id", None)
     if sender_id is None:
         return None
-    chat_id = int(getattr(message, "chat_id", config.target.target_chat_id))
+    chat_id = int(getattr(message, "chat_id", chat_id_default or 0))
     msg_dt = _ensure_tz(message.date)
     reply_info = await _get_reply_snapshot(
         client, config.storage.media_dir, message, chat_id
@@ -355,17 +392,23 @@ def _ensure_tz(dt: datetime) -> datetime:
 
 
 class _TargetHandler:
-    def __init__(self, config: Config, client: TelegramClient):
+    def __init__(self, config: Config, client: TelegramClient, target: TargetGroupConfig):
         self.config = config
         self.client = client
-        self._tracked = set(config.target.tracked_user_ids)
+        self.target = target
+        self._tracked = set(target.tracked_user_ids)
 
     async def handle(self, event: events.NewMessage.Event) -> None:
         msg = event.message
         sender_id = getattr(msg, "sender_id", None)
         if sender_id is None or int(sender_id) not in self._tracked:
             return
-        capture = await _capture_message(self.client, self.config, msg)
+        capture = await _capture_message(
+            self.client,
+            self.config,
+            msg,
+            chat_id_default=self.target.target_chat_id,
+        )
         if not capture:
             return
         message, media = capture
@@ -374,7 +417,7 @@ class _TargetHandler:
         logger.info(
             "Captured message %s from %s",
             message.message_id,
-            self.config.describe_user(int(message.sender_id)),
+            self.config.describe_user(int(message.sender_id), target=self.target),
         )
 
 
@@ -399,6 +442,19 @@ class _ControlHandler:
     async def handle(self, event: events.NewMessage.Event) -> None:
         if int(getattr(event.message, "sender_id", 0)) != self.owner_id:
             return
+        chat_id = int(getattr(event.message, "chat_id", event.chat_id))
+        control = self.config.control_for_chat(chat_id)
+        if control is None:
+            return
+        targets = self.config.targets_for_control(control.key)
+        if not targets:
+            await _reply(
+                event,
+                "No target groups are mapped to this control group.",
+                client=self.send_client,
+                fallback_client=self._fallback_client,
+            )
+            return
         text = (event.message.raw_text or "").strip()
         if not text.startswith("/"):
             return
@@ -408,17 +464,23 @@ class _ControlHandler:
             await _reply(event, _HELP_TEXT, client=self.send_client, fallback_client=self._fallback_client)
             return
         if command == "/last":
-            await self._cmd_last(event, parts[1:])
+            await self._cmd_last(event, parts[1:], control, targets)
             return
         if command == "/since":
-            await self._cmd_since(event, parts[1:])
+            await self._cmd_since(event, parts[1:], control, targets)
             return
         if command == "/export":
-            await self._cmd_export(event, parts[1:])
+            await self._cmd_export(event, parts[1:], control, targets)
             return
         await _reply(event, "Unknown command. Use /help", client=self.send_client, fallback_client=self._fallback_client)
 
-    async def _cmd_last(self, event: events.NewMessage.Event, args: Sequence[str]) -> None:
+    async def _cmd_last(
+        self,
+        event: events.NewMessage.Event,
+        args: Sequence[str],
+        control: ControlGroupConfig,
+        targets: Sequence[TargetGroupConfig],
+    ) -> None:
         if not args:
             await _reply(
                 event,
@@ -432,8 +494,14 @@ class _ControlHandler:
         except ValueError as exc:
             await _reply(event, f"Cannot resolve user: {exc}", client=self.send_client, fallback_client=self._fallback_client)
             return
-        if user_id not in self.config.target.tracked_user_ids:
-            await _reply(event, f"User {user_id} not in tracked list.", client=self.send_client, fallback_client=self._fallback_client)
+        tracked_ids = _tracked_ids_for_targets(targets)
+        if user_id not in tracked_ids:
+            await _reply(
+                event,
+                f"User {user_id} not in tracked list for this control group.",
+                client=self.send_client,
+                fallback_client=self._fallback_client,
+            )
             return
         try:
             limit = int(args[1]) if len(args) > 1 else 5
@@ -443,18 +511,26 @@ class _ControlHandler:
         if limit <= 0:
             await _reply(event, "Limit must be > 0.", client=self.send_client, fallback_client=self._fallback_client)
             return
+        chat_ids = [target.target_chat_id for target in targets]
         with db_session(self.config.storage.db_path) as conn:
-            messages = fetch_recent_messages(conn, user_id, limit)
+            messages = fetch_recent_messages(conn, user_id, limit, chat_ids=chat_ids)
         if not messages:
             await _reply(event, "No messages stored yet.", client=self.send_client, fallback_client=self._fallback_client)
             return
-        label = self.config.describe_user(user_id)
+        target = _target_for_user(targets, user_id)
+        label = self.config.describe_user(user_id, target=target)
         lines = [f"Last {len(messages)} messages for {label}:"]
         for msg in messages:
             lines.append(_format_message_line(msg))
         await _reply(event, "\n".join(lines), client=self.send_client, fallback_client=self._fallback_client)
 
-    async def _cmd_since(self, event: events.NewMessage.Event, args: Sequence[str]) -> None:
+    async def _cmd_since(
+        self,
+        event: events.NewMessage.Event,
+        args: Sequence[str],
+        control: ControlGroupConfig,
+        targets: Sequence[TargetGroupConfig],
+    ) -> None:
         if not args:
             await _reply(event, "Usage: /since <Nh|Nm|ISO>", client=self.send_client, fallback_client=self._fallback_client)
             return
@@ -463,18 +539,32 @@ class _ControlHandler:
         except ValueError as exc:
             await _reply(event, str(exc), client=self.send_client, fallback_client=self._fallback_client)
             return
+        chat_ids = [target.target_chat_id for target in targets]
         with db_session(self.config.storage.db_path) as conn:
-            counts = fetch_summary_counts(conn, self.config.target.tracked_user_ids, since)
+            counts = fetch_summary_counts(
+                conn,
+                _tracked_ids_for_targets(targets),
+                since,
+                chat_ids=chat_ids,
+            )
         if not counts:
             await _reply(event, "No messages in that window.", client=self.send_client, fallback_client=self._fallback_client)
             return
-        lines = [f"Summary since {since.isoformat()}"]
+        target_names = ", ".join(target.name for target in targets)
+        lines = [f"Summary since {since.isoformat()} (targets: {target_names})"]
         for user_id in sorted(counts):
-            label = self.config.describe_user(user_id)
+            target = _target_for_user(targets, user_id)
+            label = self.config.describe_user(user_id, target=target)
             lines.append(f"- {label}: {counts[user_id]} message(s)")
         await _reply(event, "\n".join(lines), client=self.send_client, fallback_client=self._fallback_client)
 
-    async def _cmd_export(self, event: events.NewMessage.Event, args: Sequence[str]) -> None:
+    async def _cmd_export(
+        self,
+        event: events.NewMessage.Event,
+        args: Sequence[str],
+        control: ControlGroupConfig,
+        targets: Sequence[TargetGroupConfig],
+    ) -> None:
         if not args:
             await _reply(event, "Usage: /export <Nh|Nm|ISO>", client=self.send_client, fallback_client=self._fallback_client)
             return
@@ -485,20 +575,27 @@ class _ControlHandler:
             return
         until = utc_now()
         with db_session(self.config.storage.db_path) as conn:
-            messages = fetch_messages_between(
-                conn, self.config.target.tracked_user_ids, since, until
-            )
-        report = generate_report(messages, self.config, since, until)
-        await _send_report_bundle(
-            self.send_client,
-            self.config,
-            messages,
-            since,
-            until,
-            report,
-            tracker=self._tracker,
-            fallback_client=self._fallback_client,
-        )
+            for target in targets:
+                messages = fetch_messages_between(
+                    conn,
+                    target.tracked_user_ids,
+                    since,
+                    until,
+                    chat_ids=[target.target_chat_id],
+                )
+                report = generate_report(messages, self.config, since, until, target=target)
+                await _send_report_bundle(
+                    self.send_client,
+                    self.config,
+                    control,
+                    target,
+                    messages,
+                    since,
+                    until,
+                    report,
+                    tracker=self._tracker,
+                    fallback_client=self._fallback_client,
+                )
 
     async def _resolve_user(self, arg: str) -> int:
         arg = arg.strip()
@@ -519,6 +616,23 @@ def _format_message_line(msg: DbMessage) -> str:
     return f"{msg.date.isoformat()} — {text}"
 
 
+def _tracked_ids_for_targets(targets: Sequence[TargetGroupConfig]) -> tuple[int, ...]:
+    tracked: list[int] = []
+    for target in targets:
+        tracked.extend(target.tracked_user_ids)
+    return tuple(sorted(set(tracked)))
+
+
+def _target_for_user(
+    targets: Sequence[TargetGroupConfig],
+    user_id: int,
+) -> TargetGroupConfig | None:
+    for target in targets:
+        if user_id in target.tracked_user_ids:
+            return target
+    return None
+
+
 _HELP_TEXT = (
     "Commands:\n"
     "/help - show this help\n"
@@ -532,12 +646,16 @@ class _SummaryLoop:
     def __init__(
         self,
         config: Config,
+        target: TargetGroupConfig,
+        control: ControlGroupConfig,
         client: TelegramClient,
         tracker: "_ActivityTracker",
         *,
         fallback_client: TelegramClient | None = None,
     ):
         self.config = config
+        self.target = target
+        self.control = control
         self.client = client
         self._stop = asyncio.Event()
         self._task: asyncio.Task | None = None
@@ -558,7 +676,7 @@ class _SummaryLoop:
                 pass
 
     async def _run(self) -> None:
-        interval = self.config.reporting.summary_interval_minutes * 60
+        interval = self.target.summary_interval_minutes * 60
         while not self._stop.is_set():
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=interval)
@@ -573,12 +691,16 @@ class _SummaryLoop:
         self._last_summary = now
         with db_session(self.config.storage.db_path) as conn:
             messages = fetch_messages_between(
-                conn, self.config.target.tracked_user_ids, since, now
+                conn,
+                self.target.tracked_user_ids,
+                since,
+                now,
+                chat_ids=[self.target.target_chat_id],
             )
         if not messages:
             logger.info("No tracked messages since last summary.")
             return
-        report = generate_report(messages, self.config, since, now)
+        report = generate_report(messages, self.config, since, now, target=self.target)
         _purge_old_reports(
             self.config.reporting.reports_dir,
             self.config.reporting.retention_days,
@@ -586,12 +708,14 @@ class _SummaryLoop:
         await _send_report_bundle(
             self.client,
             self.config,
+            self.control,
+            self.target,
             messages,
             since,
             now,
             report,
             tracker=self._tracker,
-            bark_context=f"({_format_interval_label(self.config.reporting.summary_interval_minutes)})",
+            bark_context=f"({_format_interval_label(self.target.summary_interval_minutes)})",
             fallback_client=self._fallback_client,
         )
 
@@ -643,12 +767,13 @@ class _HeartbeatLoop:
         if not self.tracker.should_send_heartbeat(now, self._IDLE_SECONDS):
             return
         try:
-            await _send_message_with_fallback(
-                self.client,
-                self._fallback_client,
-                self.config.control.control_chat_id,
-                "Watcher is still running",
-            )
+            for control in self.config.control_groups.values():
+                await _send_message_with_fallback(
+                    self.client,
+                    self._fallback_client,
+                    control.control_chat_id,
+                    "Watcher is still running",
+                )
             self.tracker.mark_heartbeat(now)
             await send_bark_notification(
                 self.config.notifications,
@@ -680,12 +805,42 @@ class _ActivityTracker:
         self.last_heartbeat_sent = when
 
 
+async def _push_once_reports(
+    client: TelegramClient,
+    config: Config,
+    stored_by_target: dict[str, list[DbMessage]],
+    since: datetime,
+    until: datetime,
+    report_paths: Sequence[Path],
+    *,
+    bark_context: str | None = None,
+    fallback_client: TelegramClient | None = None,
+) -> None:
+    for target, report_path in zip(config.targets, report_paths):
+        control = config.control_groups[target.control_group or ""]
+        messages = stored_by_target.get(target.name, [])
+        await _send_report_bundle(
+            client,
+            config,
+            control,
+            target,
+            messages,
+            since,
+            until,
+            report_path,
+            bark_context=bark_context,
+            fallback_client=fallback_client,
+        )
+
+
 T = TypeVar("T")
 
 
 async def _send_report_bundle(
     client: TelegramClient,
     config: Config,
+    control: ControlGroupConfig,
+    target: TargetGroupConfig,
     messages: Sequence[DbMessage],
     since: datetime,
     until: datetime | None,
@@ -695,32 +850,47 @@ async def _send_report_bundle(
     fallback_client: TelegramClient | None = None,
 ) -> None:
     window = f"{since.isoformat()} → {(until.isoformat() if until else 'now')}"
-    control = config.control.control_chat_id
-    if _topic_routing_enabled(config):
+    control_chat_id = control.control_chat_id
+    if _topic_routing_enabled(control):
         await _send_topic_reports(
             client,
             config,
             control,
+            target,
             messages,
             since,
             until,
             report_path.parent,
             fallback_client=fallback_client,
         )
-        await _send_messages_to_control(client, config, control, messages, fallback_client=fallback_client)
+        await _send_messages_to_control(
+            client,
+            config,
+            control,
+            target,
+            messages,
+            fallback_client=fallback_client,
+        )
     else:
         caption = f"tgwatch report\nWindow: {window}\nMessages: {len(messages)}"
         await _send_file_with_fallback(
             client,
             fallback_client,
-            control,
+            control_chat_id,
             report_path,
             caption=caption,
         )
-        await _send_messages_to_control(client, config, control, messages, fallback_client=fallback_client)
+        await _send_messages_to_control(
+            client,
+            config,
+            control,
+            target,
+            messages,
+            fallback_client=fallback_client,
+        )
     if tracker:
         tracker.mark_activity()
-    counts_text = _format_user_counts(messages, config)
+    counts_text = _format_user_counts(messages, config, target)
     title = "Report Ready"
     if bark_context:
         title = f"{title} {bark_context}"
@@ -735,27 +905,29 @@ async def _send_report_bundle(
 async def _send_messages_to_control(
     client: TelegramClient,
     config: Config,
-    control_chat_id: int,
+    control: ControlGroupConfig,
+    target: TargetGroupConfig,
     messages: Sequence[DbMessage],
     *,
     fallback_client: TelegramClient | None = None,
 ) -> None:
     for message in messages:
-        reply_to = _topic_reply_id_for_message(config, message)
-        text = _format_control_message(message, config)
+        reply_to = _topic_reply_id_for_message(control, message)
+        text = _format_control_message(message, config, target)
         await _send_message_with_fallback(
             client,
             fallback_client,
-            control_chat_id,
+            control.control_chat_id,
             text,
             parse_mode="html",
             reply_to=reply_to,
         )
         await _send_media_for_message(
             client,
-            control_chat_id,
+            control.control_chat_id,
             message,
             config,
+            target,
             reply_to=reply_to,
             fallback_client=fallback_client,
         )
@@ -766,13 +938,14 @@ async def _send_media_for_message(
     control_chat_id: int,
     message: DbMessage,
     config: Config,
+    target: TargetGroupConfig,
     reply_to: int | None,
     *,
     fallback_client: TelegramClient | None = None,
 ) -> None:
     if not message.media:
         return
-    sender_label = config.format_user_label(message.sender_id)
+    sender_label = config.format_user_label(message.sender_id, target=target)
     for media in message.media:
         file_path = Path(media.file_path)
         if not file_path.exists():
@@ -800,10 +973,14 @@ async def _send_media_for_message(
         )
 
 
-def _format_control_message(message: DbMessage, config: Config) -> str:
-    label = config.format_user_label(message.sender_id)
+def _format_control_message(
+    message: DbMessage,
+    config: Config,
+    target: TargetGroupConfig,
+) -> str:
+    label = config.format_user_label(message.sender_id, target=target)
     local_ts = _format_timestamp_local(message.date, config)
-    msg_link = build_message_link(config.target.target_chat_id, message.message_id)
+    msg_link = build_message_link(message.chat_id, message.message_id)
     msg_label_text = f"MSG {message.message_id}" if message.message_id else "MSG"
     if msg_link:
         msg_label = f"<a href=\"{escape(msg_link)}\">{escape(msg_label_text)}</a>"
@@ -823,7 +1000,7 @@ def _format_control_message(message: DbMessage, config: Config) -> str:
     if reply_media:
         lines.append(f"Reply attachments: {reply_media} file(s) to follow.")
     if message.replied_sender_id:
-        reply_label = config.format_user_label(message.replied_sender_id)
+        reply_label = config.format_user_label(message.replied_sender_id, target=target)
         reply_line = f"↩ Reply to {escape(reply_label)}"
         if message.replied_date:
             reply_line += f" at {escape(_format_timestamp_local(message.replied_date, config))}"
@@ -835,8 +1012,10 @@ def _format_control_message(message: DbMessage, config: Config) -> str:
     return "\n".join(lines)
 
 
-def _topic_reply_id_for_message(config: Config, message: DbMessage) -> int | None:
-    control = config.control
+def _topic_reply_id_for_message(
+    control: ControlGroupConfig,
+    message: DbMessage,
+) -> int | None:
     if not (control.is_forum and control.topic_routing_enabled):
         return None
     topic_id = control.topic_user_map.get(message.sender_id)
@@ -845,12 +1024,11 @@ def _topic_reply_id_for_message(config: Config, message: DbMessage) -> int | Non
     return topic_id
 
 
-def _topic_routing_enabled(config: Config) -> bool:
-    return bool(config.control.is_forum and config.control.topic_routing_enabled)
+def _topic_routing_enabled(control: ControlGroupConfig) -> bool:
+    return bool(control.is_forum and control.topic_routing_enabled)
 
 
-def _topic_reply_id_for_user(config: Config, user_id: int) -> int | None:
-    control = config.control
+def _topic_reply_id_for_user(control: ControlGroupConfig, user_id: int) -> int | None:
     topic_id = control.topic_user_map.get(user_id)
     if not topic_id or topic_id == 1:
         return None
@@ -860,7 +1038,8 @@ def _topic_reply_id_for_user(config: Config, user_id: int) -> int | None:
 async def _send_topic_reports(
     client: TelegramClient,
     config: Config,
-    control_chat_id: int,
+    control: ControlGroupConfig,
+    target: TargetGroupConfig,
     messages: Sequence[DbMessage],
     since: datetime,
     until: datetime | None,
@@ -873,13 +1052,14 @@ async def _send_topic_reports(
         grouped.setdefault(message.sender_id, []).append(message)
     window = f"{since.isoformat()} → {(until.isoformat() if until else 'now')}"
     for user_id, items in grouped.items():
-        label = config.format_user_label(user_id)
+        label = config.format_user_label(user_id, target=target)
         report_name = f"index_{user_id}.html"
         report_path = generate_report(
             items,
             config,
             since,
             until,
+            target=target,
             report_dir=report_dir,
             report_name=report_name,
         )
@@ -889,11 +1069,11 @@ async def _send_topic_reports(
             f"Window: {window}\n"
             f"Messages: {len(items)}"
         )
-        reply_to = _topic_reply_id_for_user(config, user_id)
+        reply_to = _topic_reply_id_for_user(control, user_id)
         await _send_file_with_fallback(
             client,
             fallback_client,
-            control_chat_id,
+            control.control_chat_id,
             report_path,
             caption=caption,
             reply_to=reply_to,
@@ -903,6 +1083,7 @@ async def _send_topic_reports(
 def _format_user_counts(
     messages: Sequence[DbMessage],
     config: Config,
+    target: TargetGroupConfig,
 ) -> str:
     if not messages:
         return ""
@@ -911,7 +1092,11 @@ def _format_user_counts(
         counter[msg.sender_id] = counter.get(msg.sender_id, 0) + 1
     parts = []
     for user_id, count in counter.items():
-        label = config.format_user_label(user_id, include_id=config.display.show_ids)
+        label = config.format_user_label(
+            user_id,
+            include_id=config.display.show_ids,
+            target=target,
+        )
         suffix = "message" if count == 1 else "messages"
         parts.append(f"{label} {count} {suffix}")
     return ", ".join(parts)
@@ -1082,12 +1267,13 @@ async def _send_error_notification(
         f"{summary}"
     )
     try:
-        await _send_message_with_fallback(
-            client,
-            fallback_client,
-            config.control.control_chat_id,
-            message,
-        )
+        for control in config.control_groups.values():
+            await _send_message_with_fallback(
+                client,
+                fallback_client,
+                control.control_chat_id,
+                message,
+            )
         await send_bark_notification(
             config.notifications,
             "Watcher error",

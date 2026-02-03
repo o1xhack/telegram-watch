@@ -12,6 +12,12 @@ cp config.example.toml config.toml
 
 All fields must be edited before the watcher can log in.
 
+Recommended: launch the local GUI (default `http://127.0.0.1:8765`) to edit config without touching the file:
+
+```bash
+tgwatch gui
+```
+
 ## 2. Telegram credentials (`[telegram]`)
 
 Field | How to obtain | Notes
@@ -32,30 +38,40 @@ Field | What it represents | Notes
 
 First run will prompt for the sender account login code separately. Make sure account B is a member of the control chat and has permission to post. Omit `[sender]` to keep the current single-account behavior.
 
-## 4. Target chat details (`[target]`)
+## 4. Target groups (`[[targets]]`)
+
+Each `[[targets]]` entry describes one Telegram group/channel you want to monitor. If you only have a single group, the legacy `[target]` format still works, but the multi-target format is recommended. Limits: up to 5 target groups, 5 users per group, and 5 control groups. Manual edits are supported but more error-prone than the GUI.
 
 Field | What it represents | How to find it
 ----- | ------------------ | -------------
+`name` | A unique label for this target group. | Any short string (used in logs/commands).
 `target_chat_id` | Numeric ID of the group/channel you want to monitor. Supergroups/channels start with `-100`. | In Telegram Desktop/Mobile open the chat → tap the title → copy the invite link → send it to `@userinfobot`, `@getidsbot`, or `@RawDataBot` and it will reply with `chat_id = -100...`. For private chats with no shareable link, see “Private group without invite link” below.
 `tracked_user_ids` | List of integer user IDs to watch inside the target chat. | Ask each target user to send a message to `@userinfobot` and forward you the ID, or invite `@userinfobot` to the chat and reply `/whois @username`. Replace the sample list (`[11111111, 22222222]`) with the actual integers.
+`summary_interval_minutes` | Optional per-target report interval. | If omitted, falls back to `reporting.summary_interval_minutes`.
+`control_group` | Which control group should receive reports for this target. | Required when multiple control groups exist; optional if only one control group is configured.
 
 Tips:
 
 - Always keep the IDs numeric; quoted usernames will not work.
 - Include only the users you care about; everything else is ignored.
-- For supergroups，记得保留 `-100` 前缀，这样报告里的 `MSG` 链接才能跳回 Telegram。
+- For supergroups, keep the `-100` prefix so `MSG` links jump back to Telegram.
 
 ### Optional aliases
 
-To make reports easier to read, you can assign human-friendly labels to each tracked user ID.
+To make reports easier to read, you can assign human-friendly labels to each tracked user ID (per target group).
 
 ```toml
-[target.tracked_user_aliases]
+[[targets]]
+name = "group-1"
+target_chat_id = -1001234567890
+tracked_user_ids = [11111111, 22222222]
+
+[targets.tracked_user_aliases]
 11111111 = "Alice"
 22222222 = "Bob (PM)"
 ```
 
-Each key must match an ID listed in `tracked_user_ids`. Reports and control-chat summaries will display `Alice (11111111)` instead of a bare number.
+Each key must match an ID listed in that target’s `tracked_user_ids`. Reports and control-chat summaries will display `Alice (11111111)` instead of a bare number.
 
 ### Private group without invite link
 
@@ -74,16 +90,20 @@ If you joined a private group and cannot create invite links, you still have a f
 
    If you only have the native macOS “Telegram” app (round icon) and no Advanced menu, either install Telegram Desktop from the link above or use the web client (`https://web.telegram.org/k/`) where the address bar shows `#-1001234567890` when the group is open.
 
-Pick whichever option your group permissions allow. Once you have the numeric ID, fill `target.target_chat_id` in `config.toml`.
+Pick whichever option your group permissions allow. Once you have the numeric ID, fill `targets[].target_chat_id` in `config.toml`.
 
-## 5. Control chat (`[control]`)
+## 5. Control groups (`[control_groups]`)
+
+Control groups receive reports and accept commands (`/last`, `/since`, `/export`). You can define one or more control groups, then map each target group to a control group via `targets[].control_group`.
 
 Field | Description | Recommendation
 ----- | ----------- | --------------
-`control_chat_id` | Where tgwatch posts summaries and where you send commands (`/last`, `/since`, etc.). | Use your personal “Saved Messages” dialog or a private group that only you control. Retrieve the numeric ID the same way as the target chat (bots like `@userinfobot` show `chat_id` in replies). Make sure your own Telegram account is a member so commands are accepted.
+`control_chat_id` | Where tgwatch posts summaries and where you send commands. | Use your personal “Saved Messages” dialog or a private group that only you control. Retrieve the numeric ID the same way as the target chat (bots like `@userinfobot` show `chat_id` in replies). Make sure your own Telegram account is a member so commands are accepted.
 `is_forum` | Set `true` if the control chat has Topics (forum mode) enabled. | Keep `false` for normal groups or “Saved Messages”.
 `topic_routing_enabled` | Enable per-user routing into forum topics. | Leave `false` unless you want per-user topics.
 `topic_user_map` | Map tracked user IDs to forum topic IDs. | Provide only when `topic_routing_enabled = true`.
+
+If only one control group is configured, `targets[].control_group` can be omitted (all targets route to the single control group). If multiple control groups exist, every target must declare `control_group`.
 
 ### Topic routing (forum groups)
 
@@ -93,12 +113,12 @@ When topic routing is enabled, HTML reports are also split per user and sent to 
 Example:
 
 ```toml
-[control]
+[control_groups.main]
 control_chat_id = -1009876543210
 is_forum = true
 topic_routing_enabled = true
 
-[control.topic_user_map]
+[control_groups.main.topic_user_map]
 11111111 = 9001  # Alice -> Topic A
 22222222 = 9002  # Bob -> Topic B
 ```
@@ -130,7 +150,7 @@ You may leave the defaults or point them to any writable path. The `doctor` comm
 Field | Description | Default
 ----- | ----------- | -------
 `reports_dir` | Root folder for generated HTML reports. Subdirectories follow `reports/YYYY-MM-DD/HHMM/index.html`. | `reports`
-`summary_interval_minutes` | How often the `run` command builds a report and pushes it to the control chat. Set `30` for every half hour, or any other positive integer (recommended ≥ 10 to avoid FloodWait). | `120` (2 hours)
+`summary_interval_minutes` | Default report interval for `run`. Targets can override this with `targets[].summary_interval_minutes`. Set `30` for every half hour, or any other positive integer (recommended ≥ 10 to avoid FloodWait). | `120` (2 hours)
 `timezone` | IANA timezone string (examples: `Asia/Shanghai`, `America/Los_Angeles`, `America/New_York`, `Asia/Tokyo`). Determines how timestamps appear in reports and control-chat pushes. Falls back to `UTC` if omitted. | `UTC`
 `retention_days` | How many days of reports/media to keep when `run` is active. Older directories are deleted automatically at startup and after each summary. Setting values > 180 triggers a confirmation prompt to warn about disk usage. | `30`
 

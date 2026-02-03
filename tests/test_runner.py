@@ -11,12 +11,12 @@ import pytest
 from telegram_watch import runner
 from telegram_watch.config import (
     Config,
-    ControlConfig,
+    ControlGroupConfig,
     DisplayConfig,
     NotificationConfig,
     ReportingConfig,
     StorageConfig,
-    TargetConfig,
+    TargetGroupConfig,
     TelegramConfig,
 )
 from telegram_watch.storage import DbMessage
@@ -25,12 +25,16 @@ from telegram_watch.timeutils import utc_now
 
 def build_config(tmp_path: Path) -> Config:
     telegram = TelegramConfig(api_id=1, api_hash="abcdefghijk", session_file=tmp_path / "session")
-    target = TargetConfig(
+    target = TargetGroupConfig(
+        name="default",
         target_chat_id=-123,
         tracked_user_ids=(111,),
         tracked_user_aliases=MappingProxyType({}),
+        summary_interval_minutes=120,
+        control_group="default",
     )
-    control = ControlConfig(
+    control = ControlGroupConfig(
+        key="default",
         control_chat_id=-456,
         is_forum=False,
         topic_routing_enabled=False,
@@ -48,8 +52,12 @@ def build_config(tmp_path: Path) -> Config:
     return Config(
         telegram=telegram,
         sender=None,
-        target=target,
-        control=control,
+        targets=(target,),
+        control_groups=MappingProxyType({"default": control}),
+        target_by_chat_id=MappingProxyType({target.target_chat_id: target}),
+        target_by_name=MappingProxyType({target.name: target}),
+        control_by_chat_id=MappingProxyType({control.control_chat_id: control}),
+        targets_by_control=MappingProxyType({"default": (target,)}),
         storage=storage,
         reporting=reporting,
         display=display,
@@ -72,17 +80,51 @@ def test_heartbeat_repeats_after_idle_interval():
     assert tracker.should_send_heartbeat(now, idle_seconds=2 * 60 * 60) is True
 
 
+def test_topic_reply_id_for_message_respects_control_group():
+    control = ControlGroupConfig(
+        key="main",
+        control_chat_id=-456,
+        is_forum=True,
+        topic_routing_enabled=True,
+        topic_user_map=MappingProxyType({111: 9001}),
+    )
+    message = DbMessage(
+        chat_id=-123,
+        message_id=1,
+        sender_id=111,
+        date=datetime.now(timezone.utc),
+        text="hello",
+        reply_to_msg_id=None,
+        replied_sender_id=None,
+        replied_date=None,
+        replied_text=None,
+        media=[],
+    )
+    assert runner._topic_reply_id_for_message(control, message) == 9001
+
+    control_no_map = ControlGroupConfig(
+        key="alt",
+        control_chat_id=-457,
+        is_forum=True,
+        topic_routing_enabled=True,
+        topic_user_map=MappingProxyType({}),
+    )
+    assert runner._topic_reply_id_for_message(control_no_map, message) is None
+
+
 @pytest.mark.asyncio
 async def test_summary_loop_passes_tracker_and_bark_context(monkeypatch, tmp_path: Path):
     config = build_config(tmp_path)
+    target = config.targets[0]
+    control = config.control_groups["default"]
     tracker = runner._ActivityTracker()
-    loop = runner._SummaryLoop(config, client=object(), tracker=tracker)
+    loop = runner._SummaryLoop(config, target, control, client=object(), tracker=tracker)
     loop._last_summary = utc_now() - timedelta(minutes=120)
 
     sample_message = DbMessage(
-        chat_id=config.target.target_chat_id,
+        chat_id=target.target_chat_id,
         message_id=1,
-        sender_id=config.target.tracked_user_ids[0],
+        sender_id=target.tracked_user_ids[0],
         date=datetime.now(timezone.utc),
         text="hello",
         reply_to_msg_id=None,
@@ -96,10 +138,10 @@ async def test_summary_loop_passes_tracker_and_bark_context(monkeypatch, tmp_pat
     def fake_db_session(_path: Path):
         yield object()
 
-    def fake_fetch_messages_between(_conn, _ids, _since, _until):
+    def fake_fetch_messages_between(_conn, _ids, _since, _until, **_kwargs):
         return [sample_message]
 
-    def fake_generate_report(_messages, _config, _since, _until):
+    def fake_generate_report(_messages, _config, _since, _until, **_kwargs):
         return tmp_path / "report.html"
 
     # Track arguments passed to _send_report_bundle.
@@ -108,6 +150,8 @@ async def test_summary_loop_passes_tracker_and_bark_context(monkeypatch, tmp_pat
     async def fake_send_report_bundle(
         _client,
         _config,
+        _control,
+        _target,
         messages,
         _since,
         _until,

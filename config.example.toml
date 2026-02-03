@@ -3,25 +3,44 @@ api_id = 123456
 api_hash = "PUT_YOUR_API_HASH_HERE"
 session_file = "data/tgwatch.session"
 
+# Tip: run `tgwatch gui` for the local GUI editor.
+
 # [sender]
 # session_file = "data/tgwatch_sender.session"  # optional: second account session for bridge sending
 
-[target]
+[[targets]]
+name = "group-1"
 target_chat_id = -1001234567890
 tracked_user_ids = [11111111, 22222222]
+summary_interval_minutes = 3
+control_group = "main"  # optional when only one control group is configured
 
-[target.tracked_user_aliases]
+[targets.tracked_user_aliases]
 11111111 = "Alice"
 22222222 = "Bob"
 
-[control]
+[[targets]]
+name = "group-2"
+target_chat_id = -1001234567899
+tracked_user_ids = [33333333]
+summary_interval_minutes = 10
+control_group = "main"
+
+[control_groups.main]
 control_chat_id = -1009876543210
 is_forum = false
 topic_routing_enabled = false
 
-[control.topic_user_map]
+[control_groups.main.topic_user_map]
 11111111 = 9001
 22222222 = 9002
+
+# [control_groups.alt]
+# control_chat_id = -1001234567000
+# is_forum = true
+# topic_routing_enabled = true
+# [control_groups.alt.topic_user_map]
+# 33333333 = 9101
 
 [storage]
 db_path = "data/tgwatch.sqlite3"

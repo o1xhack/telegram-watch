@@ -4,6 +4,10 @@
 
 > Entries are arranged from newest to oldest so the latest release notes stay at the top. Each bullet references the requirement(s) that introduced the change.
 
+## 0.5.0 — 2026-02-03
+- Added multi-target monitoring with per-target report intervals and configurable control-group routing (REQ-20260202-001-multi-admin-monitoring).
+- Added a local GUI for configuring multi-group monitoring, control-group routing, and limits (REQ-20260203-001-config-gui-design).
+
 ## 0.3.0 — 2026-01-29
 - Added dual-account bridging so a sender account can post control-group updates and restore notifications for the primary account (REQ-20260129-002-bridge-implementation).
 - Clarified login prompts so primary vs sender accounts are labeled during dual-account setup (REQ-20260129-003-sender-login-prompt).

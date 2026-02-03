@@ -12,6 +12,12 @@ cp config.example.toml config.toml
 
 在首次登录前必须编辑所有字段。
 
+推荐：启动本地 GUI（默认 `http://127.0.0.1:8765`）进行配置：
+
+```bash
+tgwatch gui
+```
+
 ## 2. Telegram 凭据（`[telegram]`）
 
 字段 | 获取方式 | 说明
@@ -32,12 +38,17 @@ cp config.example.toml config.toml
 
 首次运行会分别提示登录账号 B。请确保账号 B 已加入控制群并拥有发言权限。不需要桥接时可省略 `[sender]`。
 
-## 4. 目标群信息（`[target]`）
+## 4. 目标群（`[[targets]]`）
+
+每个 `[[targets]]` 条目代表一个要监控的群/频道。若只有一个目标群，旧版 `[target]` 仍可用，但推荐使用多目标格式。限制：最多 5 个目标群、每群最多 5 个用户、最多 5 个控制群。仍支持手动编辑，但更容易出错。
 
 字段 | 含义 | 获取方式
 ----- | ---- | ----
+`name` | 目标群的名称/标签 | 任意短字符串（用于日志/命令）
 `target_chat_id` | 目标群/频道的数字 ID，超级群/频道以 `-100` 开头。 | 在 Telegram Desktop/手机中打开群 → 点击标题 → 复制邀请链接 → 发送给 `@userinfobot`/`@getidsbot`/`@RawDataBot`，机器人会返回 `chat_id = -100...`。若无法分享链接，见下方“私有群无邀请链接”。
 `tracked_user_ids` | 需要监控的用户 ID 列表。 | 让目标用户给 `@userinfobot` 发送消息并把 ID 转发给你，或把 `@userinfobot` 拉进群后 `/whois @username`。用真实 ID 替换示例列表（`[11111111, 22222222]`）。
+`summary_interval_minutes` | 可选：该目标群的报告频率 | 未填写则使用 `reporting.summary_interval_minutes`
+`control_group` | 该目标群对应的控制群 | 当存在多个控制群时必填；只有一个控制群时可省略
 
 提示：
 
@@ -47,15 +58,20 @@ cp config.example.toml config.toml
 
 ### 可选别名
 
-为了更易读，可给每个用户 ID 添加别名：
+为了更易读，可给每个用户 ID 添加别名（按目标群配置）：
 
 ```toml
-[target.tracked_user_aliases]
+[[targets]]
+name = "group-1"
+target_chat_id = -1001234567890
+tracked_user_ids = [11111111, 22222222]
+
+[targets.tracked_user_aliases]
 11111111 = "Alice"
 22222222 = "Bob (PM)"
 ```
 
-每个 key 必须在 `tracked_user_ids` 列表中。报告与控制群推送会显示 `Alice (11111111)`。
+每个 key 必须在该目标群的 `tracked_user_ids` 列表中。报告与控制群推送会显示 `Alice (11111111)`。
 
 ### 私有群无邀请链接
 
@@ -71,16 +87,20 @@ cp config.example.toml config.toml
    2. **Advanced** → **Experimental settings** → 开启 **Enable experimental features** 与 **Show message IDs**。
    3. 回到群聊右键消息 → **Copy message link**。链接形如 `https://t.me/c/1234567890/55`，转换为 `-1001234567890` 后填入 `target_chat_id`。
 
-   若仅有原生 macOS “Telegram” 应用（圆形图标）且无 Advanced 菜单，请安装 Desktop 版或使用网页版（`https://web.telegram.org/k/`），地址栏会显示 `#-1001234567890`。
+若仅有原生 macOS “Telegram” 应用（圆形图标）且无 Advanced 菜单，请安装 Desktop 版或使用网页版（`https://web.telegram.org/k/`），地址栏会显示 `#-1001234567890`。
 
-## 5. 控制群（`[control]`）
+## 5. 控制群（`[control_groups]`）
+
+控制群用于接收报告并下发命令（`/last`、`/since` 等）。可配置多个控制群，并通过 `targets[].control_group` 进行映射。
 
 字段 | 描述 | 建议
 ----- | ---- | ----
-`control_chat_id` | 控制群位置，用于接收摘要和执行命令（`/last`、`/since` 等）。 | 建议使用“Saved Messages”或仅你可控的小群，并确保你的账号在群内。
+`control_chat_id` | 控制群位置，用于接收摘要和执行命令。 | 建议使用“Saved Messages”或仅你可控的小群，并确保你的账号在群内。
 `is_forum` | 控制群是否开启 Topics（论坛模式）。 | 普通群或“Saved Messages”保持 `false`。
 `topic_routing_enabled` | 启用按用户路由到 Topics。 | 不需要时保持 `false`。
 `topic_user_map` | 追踪用户 ID → Topic ID 映射。 | 仅在 `topic_routing_enabled = true` 时填写。
+
+若只有一个控制群，`targets[].control_group` 可省略；若存在多个控制群，则每个目标群都必须指定 `control_group`。
 
 ### Topic 路由（论坛群）
 
@@ -90,12 +110,12 @@ cp config.example.toml config.toml
 示例：
 
 ```toml
-[control]
+[control_groups.main]
 control_chat_id = -1009876543210
 is_forum = true
 topic_routing_enabled = true
 
-[control.topic_user_map]
+[control_groups.main.topic_user_map]
 11111111 = 9001  # Alice -> Topic A
 22222222 = 9002  # Bob -> Topic B
 ```
@@ -125,7 +145,7 @@ General 主题固定 ID 为 `1`。关闭 Topic 路由时默认发送到 General�
 字段 | 描述 | 默认值
 ----- | ---- | ------
 `reports_dir` | HTML 报告根目录，子目录按 `reports/YYYY-MM-DD/HHMM/index.html` 组织。 | `reports`
-`summary_interval_minutes` | `run` 生成报告的间隔分钟数（建议 ≥10 以避免 FloodWait）。 | `120`
+`summary_interval_minutes` | `run` 的默认报告间隔（目标群可通过 `targets[].summary_interval_minutes` 覆盖）。 | `120`
 `timezone` | IANA 时区（如 `Asia/Shanghai`、`America/Los_Angeles`）。 | `UTC`
 `retention_days` | 报告/媒体保留天数，超过即自动清理；设置 >180 时会提示确认。 | `30`
 

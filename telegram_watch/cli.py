@@ -10,6 +10,7 @@ from typing import Sequence
 
 from .config import Config, ConfigError, load_config
 from .doctor import run_doctor
+from .gui import run_gui
 from .runner import run_daemon, run_once
 from .timeutils import parse_since_spec, utc_now
 
@@ -60,6 +61,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run watcher daemon",
         parents=[common],
     )
+
+    gui_parser = subparsers.add_parser(
+        "gui",
+        help="Launch local GUI to edit config",
+    )
+    gui_parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Host to bind the GUI server",
+    )
+    gui_parser.add_argument(
+        "--port",
+        type=int,
+        default=8765,
+        help="Port to bind the GUI server",
+    )
+    gui_parser.add_argument(
+        "--config",
+        type=Path,
+        default=Path("config.toml"),
+        help="Path to config TOML file (default: config.toml)",
+    )
     return parser
 
 
@@ -87,6 +110,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             logging.getLogger(__name__).warning("Run cancelled by user.")
             return 1
         return asyncio.run(_run_daemon_command(config))
+    elif args.command == "gui":
+        run_gui(args.config, host=args.host, port=args.port)
+        return 0
     else:  # pragma: no cover - argparse ensures command
         parser.error(f"Unknown command {args.command}")
 
@@ -99,8 +125,10 @@ def _load_config_or_exit(parser: argparse.ArgumentParser, path: Path) -> Config:
 
 
 async def _run_once_command(config, since, since_label=None, push: bool = False):
-    report_path = await run_once(config, since, push=push, since_label=since_label)
-    logging.getLogger(__name__).info("Report generated at %s", report_path)
+    report_paths = await run_once(config, since, push=push, since_label=since_label)
+    logger = logging.getLogger(__name__)
+    for report_path in report_paths:
+        logger.info("Report generated at %s", report_path)
     return 0
 
 

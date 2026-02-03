@@ -12,6 +12,12 @@ cp config.example.toml config.toml
 
 初回ログイン前に全項目を編集してください。
 
+推奨：ローカル GUI（既定 `http://127.0.0.1:8765`）で編集します。
+
+```bash
+tgwatch gui
+```
+
 ## 2. Telegram 認証情報（`[telegram]`）
 
 項目 | 取得方法 | 注意点
@@ -32,12 +38,17 @@ cp config.example.toml config.toml
 
 初回実行時にアカウント B のログインコード入力が求められます。アカウント B がコントロールチャットに参加し、投稿権限があることを確認してください。不要な場合は `[sender]` を省略できます。
 
-## 4. 監視対象チャット（`[target]`）
+## 4. 監視対象グループ（`[[targets]]`）
+
+各 `[[targets]]` エントリが 1 つの監視対象グループ/チャンネルを表します。単一の対象だけなら旧形式の `[target]` も使えますが、複数対応の形式を推奨します。上限：ターゲット 5 件、各ターゲット 5 ユーザー、control group 5 件。手動編集も可能ですがミスが起きやすいので非推奨です。
 
 項目 | 意味 | 取得方法
 ----- | ---- | ----
+`name` | ターゲット名/ラベル | 任意の短い文字列（ログ/コマンドで使用）
 `target_chat_id` | 監視対象グループ/チャンネルの数値 ID。スーパーグループ/チャンネルは `-100` で始まる。 | Telegram Desktop/モバイルでチャットを開く → タイトル → 招待リンクをコピー → `@userinfobot`/`@getidsbot`/`@RawDataBot` に送ると `chat_id = -100...` が返ります。招待リンクがない場合は下記参照。
 `tracked_user_ids` | 追跡するユーザー ID の配列。 | 各ユーザーに `@userinfobot` へ送信してもらうか、`@userinfobot` をグループに追加して `/whois @username`。例の `[11111111, 22222222]` を実 ID に置き換え。
+`summary_interval_minutes` | 任意：ターゲットごとのレポート間隔 | 未設定なら `reporting.summary_interval_minutes`
+`control_group` | このターゲットの送信先 control group | 複数の control group がある場合は必須
 
 ヒント：
 
@@ -47,15 +58,20 @@ cp config.example.toml config.toml
 
 ### エイリアス（任意）
 
-読みやすさのために別名を付けられます：
+読みやすさのために別名を付けられます（ターゲットごとに設定）：
 
 ```toml
-[target.tracked_user_aliases]
+[[targets]]
+name = "group-1"
+target_chat_id = -1001234567890
+tracked_user_ids = [11111111, 22222222]
+
+[targets.tracked_user_aliases]
 11111111 = "Alice"
 22222222 = "Bob (PM)"
 ```
 
-キーは `tracked_user_ids` に含まれる必要があります。制御チャットとレポートで `Alice (11111111)` のように表示されます。
+キーは対象ターゲットの `tracked_user_ids` に含まれる必要があります。制御チャットとレポートで `Alice (11111111)` のように表示されます。
 
 ### 招待リンクのないプライベートグループ
 
@@ -71,16 +87,20 @@ cp config.example.toml config.toml
    2. **Advanced** → **Experimental settings** → **Enable experimental features** と **Show message IDs** をオン。
    3. グループでメッセージを右クリック → **Copy message link**。`https://t.me/c/1234567890/55` のようなリンクを `-1001234567890` に変換して `target_chat_id` に記入。
 
-   ネイティブの macOS 版（丸アイコン）しかない場合は Desktop 版か Web 版（`https://web.telegram.org/k/`）を利用してください。
+ネイティブの macOS 版（丸アイコン）しかない場合は Desktop 版か Web 版（`https://web.telegram.org/k/`）を利用してください。
 
-## 5. コントロールチャット（`[control]`）
+## 5. コントロールグループ（`[control_groups]`）
+
+コントロールグループはレポートとコマンド（`/last`、`/since` など）の送信先です。複数の control group を定義し、`targets[].control_group` でマッピングできます。
 
 項目 | 説明 | 推奨
 ----- | ---- | ----
-`control_chat_id` | レポート/コマンドの送信先（`/last`、`/since` など）。 | “Saved Messages” か自分だけのグループを推奨。
+`control_chat_id` | レポート/コマンドの送信先。 | “Saved Messages” か自分だけのグループを推奨。
 `is_forum` | コントロールチャットが Topics（フォーラム）を有効にしているか。 | 通常グループや “Saved Messages” は `false`。
 `topic_routing_enabled` | ユーザーごとの Topic ルーティングを有効化。 | 不要なら `false`。
 `topic_user_map` | ユーザー ID → Topic ID の対応表。 | `topic_routing_enabled = true` の場合のみ。
+
+control group が 1 つだけなら `targets[].control_group` は省略可能です。複数ある場合は各ターゲットで必ず指定してください。
 
 ### Topic ルーティング（フォーラムグループ）
 
@@ -90,12 +110,12 @@ Topic ルーティング有効時は、HTML レポートもユーザーごとに
 例：
 
 ```toml
-[control]
+[control_groups.main]
 control_chat_id = -1009876543210
 is_forum = true
 topic_routing_enabled = true
 
-[control.topic_user_map]
+[control_groups.main.topic_user_map]
 11111111 = 9001  # Alice -> Topic A
 22222222 = 9002  # Bob -> Topic B
 ```
@@ -125,7 +145,7 @@ General の Topic ID は常に `1` です。Topic ルーティングを無効に
 項目 | 説明 | 既定値
 ----- | ---- | ------
 `reports_dir` | HTML レポートのルート。`reports/YYYY-MM-DD/HHMM/index.html` 形式。 | `reports`
-`summary_interval_minutes` | `run` のレポート間隔（分）。FloodWait 回避のため 10 分以上推奨。 | `120`
+`summary_interval_minutes` | `run` のデフォルトレポート間隔（ターゲットごとに `targets[].summary_interval_minutes` で上書き可能）。 | `120`
 `timezone` | IANA タイムゾーン（例 `Asia/Tokyo`、`America/Los_Angeles`）。 | `UTC`
 `retention_days` | レポート/メディアの保持日数。超過分は自動削除。180 日超は確認。 | `30`
 

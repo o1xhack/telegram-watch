@@ -91,22 +91,41 @@ python -m pip install -U pip
    cp config.example.toml config.toml
    ```
 
-2. `config.toml` を編集して次の値を入力します：
+   ヒント：ローカル GUI を起動して編集できます（既定 `http://127.0.0.1:8765`）。
+
+   ```bash
+   tgwatch gui
+   ```
+
+2. ローカル GUI（推奨）で設定します：
+
+   ```bash
+   tgwatch gui
+   ```
+
+   `config.toml` を直接編集する方法も残していますが、ミスが起きやすいため非推奨です。
+
+3. 手動で編集する場合は次の値を入力します：
 
    - `telegram.api_id` / `telegram.api_hash`
    - `telegram.session_file`（デフォルト `data/tgwatch.session`）
    - `[sender] session_file`（任意：通知復元のために送信専用の第二アカウントを使う場合）
-   - `target.target_chat_id`（監視対象グループ/チャンネルの ID）
-   - `target.tracked_user_ids`（追跡するユーザー ID の配列）
-   - `[target.tracked_user_aliases]`（オプション：ID と表示名の対応表）
-   - `control.control_chat_id`（レポート・コマンドの送受信先）
-   - `control.is_forum` / `control.topic_routing_enabled` / `[control.topic_user_map]`（任意：ユーザー別に TG Topic へ振り分け）
+   - `targets[].name`（各ターゲットグループの名前/ラベル）
+   - `targets[].target_chat_id`（監視対象グループ/チャンネルの ID）
+   - `targets[].tracked_user_ids`（追跡するユーザー ID の配列）
+   - `targets[].summary_interval_minutes`（任意：ターゲットごとのレポート間隔）
+   - `targets[].control_group`（任意：複数の control group がある場合は必須）
+   - `[targets.tracked_user_aliases]`（オプション：ID と表示名の対応表）
+   - `control_groups.<name>.control_chat_id`（レポート・コマンドの送受信先）
+   - `control_groups.<name>.is_forum` / `control_groups.<name>.topic_routing_enabled` / `[control_groups.<name>.topic_user_map]`（任意：ユーザー別に TG Topic へ振り分け）
    - `storage.db_path` と `storage.media_dir`
-   - `reporting.reports_dir`, `reporting.summary_interval_minutes`（レポートの間隔）
+   - `reporting.reports_dir`, `reporting.summary_interval_minutes`（デフォルトのレポート間隔）
    - `reporting.timezone`（例：`Asia/Tokyo`、`America/Los_Angeles` 等）
    - `reporting.retention_days`（レポート/メディアの保持日数。デフォルト 30、180 を超えると警告）
    - `[notifications] bark_key`（任意の Bark Key。設定するとスマホ通知を受け取れます）
    - `[display] show_ids`（ID を表示するか、デフォルト true）と `time_format`（strftime 形式）でコントロールチャットの名前/時刻表示を調整
+
+単一ターゲット構成は従来どおり `[target]` + `[control]` でも動作します。
 
 ### Bark Key の取得方法
 
@@ -136,9 +155,17 @@ python -m pip install -U pip
 python -m tgwatch doctor --config config.toml
 ```
 
+### GUI（ローカル設定画面）
+
+ローカル UI でターゲット/コントロールグループを編集（自動でブラウザが開きます）：
+
+```bash
+tgwatch gui
+```
+
 ### Once（単発レポート）
 
-直近のウィンドウ（例：2 時間）のメッセージを取得・保存し、`reports/YYYY-MM-DD/HHMM/index.html` を生成：
+直近のウィンドウ（例：2 時間）のメッセージを取得・保存し、ターゲットごとに `reports/YYYY-MM-DD/HHMM/index.html` を生成：
 
 ```bash
 python -m tgwatch once --config config.toml --since 2h
@@ -156,8 +183,8 @@ python -m tgwatch run --config config.toml
 
 常駐モードでは：
 
-- 監視対象のチャットを常時リッスンし、追跡ユーザーのメッセージを保存（テキスト、引用、メディア快照）。
-- `summary_interval_minutes` ごとに HTML レポートを生成してコントロールチャットへ送信し、その時間枠のメッセージを順次通知。
+- 各ターゲットチャットを常時リッスンし、追跡ユーザーのメッセージを保存（テキスト、引用、メディア快照）。
+- 各ターゲットの `summary_interval_minutes`（または全体のデフォルト）ごとに HTML レポートを生成して対応するコントロールチャットへ送信し、その時間枠のメッセージを順次通知。
 - 画像は通常 Base64 で HTML に埋め込み、読み取れない場合は相対パスにフォールバック。
 - コントロールチャットでは次のコマンドが利用できます（自分のアカウント限定）：
   - `/help`

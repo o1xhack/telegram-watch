@@ -91,22 +91,41 @@ python -m pip install -U pip
    cp config.example.toml config.toml
    ```
 
-2. 編輯 `config.toml`，填入：
+   提示：可使用本機 GUI 設定（預設 `http://127.0.0.1:8765`）：
+
+   ```bash
+   tgwatch gui
+   ```
+
+2. 啟動本機 GUI（推薦）進行設定：
+
+   ```bash
+   tgwatch gui
+   ```
+
+   仍可直接編輯 `config.toml`，但不建議，較容易出錯。
+
+3. 若選擇手動編輯檔案，請填入：
 
    - `telegram.api_id` / `telegram.api_hash`
    - `telegram.session_file`（預設 `data/tgwatch.session`）
    - `[sender] session_file`（可選：用第二帳號發送以讓主帳號收到通知）
-   - `target.target_chat_id`（目標群/頻道 ID）
-   - `target.tracked_user_ids`（要監控的使用者 ID 列表）
-   - `[target.tracked_user_aliases]`（可選 ID→別名對應）
-   - `control.control_chat_id`（接收報告與指令的控制群）
-   - `control.is_forum` / `control.topic_routing_enabled` / `[control.topic_user_map]`（可選：依使用者分流到 TG Topic）
+   - `targets[].name`（每個目標群的名稱/標籤）
+   - `targets[].target_chat_id`（目標群/頻道 ID）
+   - `targets[].tracked_user_ids`（要監控的使用者 ID 列表）
+   - `targets[].summary_interval_minutes`（可選：每個目標群的報告頻率）
+   - `targets[].control_group`（可選；當存在多個控制群時必填）
+   - `[targets.tracked_user_aliases]`（可選 ID→別名對應）
+   - `control_groups.<name>.control_chat_id`（接收報告與指令的控制群）
+   - `control_groups.<name>.is_forum` / `control_groups.<name>.topic_routing_enabled` / `[control_groups.<name>.topic_user_map]`（可選：依使用者分流到 TG Topic）
    - `storage.db_path` 與 `storage.media_dir`
-   - `reporting.reports_dir` 與 `reporting.summary_interval_minutes`（報告頻率）
+   - `reporting.reports_dir` 與 `reporting.summary_interval_minutes`（預設報告頻率）
    - `reporting.timezone`（如 `Asia/Taipei`、`America/Los_Angeles` 等）
    - `reporting.retention_days`（報告/媒體保留天數，預設 30，超過 180 會先提醒）
    - `[notifications] bark_key`（可選 Bark Key，可同步手機推播）
    - `[display] show_ids`（是否顯示 ID，預設 true）與 `time_format`（strftime 格式字串）可調整控制群推送的名字/時間格式
+
+單一目標群仍可沿用舊版 `[target]` + `[control]` 設定。
 
 ### Bark Key 取得方式
 
@@ -136,9 +155,17 @@ python -m pip install -U pip
 python -m tgwatch doctor --config config.toml
 ```
 
+### GUI（本機設定介面）
+
+啟動本機 UI 來管理目標群與控制群（會自動開啟瀏覽器）：
+
+```bash
+tgwatch gui
+```
+
 ### Once（單次報告）
 
-抓取最近時間窗（例如 2 小時），寫入資料庫並輸出 `reports/YYYY-MM-DD/HHMM/index.html`：
+抓取最近時間窗（例如 2 小時），寫入資料庫並為每個目標群輸出 `reports/YYYY-MM-DD/HHMM/index.html`：
 
 ```bash
 python -m tgwatch once --config config.toml --since 2h
@@ -156,8 +183,8 @@ python -m tgwatch run --config config.toml
 
 執行時：
 
-- 持續監看目標群，追蹤使用者訊息會被寫入（文字、引用、媒體快照）。
-- 每個 `summary_interval_minutes` 窗口結束後，產生 HTML 報告並推送到控制群，再依序推送該時間窗內的所有訊息。
+- 持續監看每個目標群，追蹤使用者訊息會被寫入（文字、引用、媒體快照）。
+- 依各目標群的 `summary_interval_minutes`（或全域預設）產生 HTML 報告並推送到對應控制群，再依序推送該時間窗內的所有訊息。
 - 報告內的圖片預設以 Base64 內嵌；若檔案讀取失敗，則會退回相對路徑。
 - 控制群可接受指令（僅限你本人帳號）：
   - `/help`
