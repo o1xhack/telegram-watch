@@ -229,3 +229,6 @@ docs/requests/*
 .DS_Store
 
 .vscode/
+
+# Codex local env
+.codex/environments/
