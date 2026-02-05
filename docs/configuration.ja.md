@@ -24,8 +24,9 @@ cp config.example.toml config.toml
 tgwatch gui
 ```
 
-GUI には **Run once** / **Run daemon** ボタンとログ表示があります。session ファイルが未作成の場合は、先に `python -m tgwatch run --config config.toml` をターミナルで一度実行してログインを完了してください。
+GUI には **Run once** / **Run daemon** / **Stop daemon** ボタンとログ表示があります。session ファイルが未作成の場合は、先に `python -m tgwatch run --config config.toml` をターミナルで一度実行してログインを完了してください。
 GUI で単一ターゲットを選択するか、CLI の `--target`（名前または `target_chat_id`）で **Run once** を対象限定できます。GUI には **Push to control chat** トグル（既定オフ）があり、ログは最大 200 行までスクロール表示し、空ログ時はコンパクトに保ちます。
+`retention_days > 180` の場合、**Run daemon** クリック後に画面内確認が必要です。チェックを入れて **Confirm & Start Run** を押すと起動します。
 
 ## 2. Telegram 認証情報（`[telegram]`）
 
@@ -157,7 +158,7 @@ General の Topic ID は常に `1` です。Topic ルーティングを無効に
 `reports_dir` | HTML レポートのルート。`reports/YYYY-MM-DD/HHMM/index.html` 形式。 | `reports`
 `summary_interval_minutes` | `run` のデフォルトレポート間隔（ターゲットごとに `targets[].summary_interval_minutes` で上書き可能）。 | `120`
 `timezone` | IANA タイムゾーン（例 `Asia/Tokyo`、`America/Los_Angeles`）。 | `UTC`
-`retention_days` | レポート/メディアの保持日数。超過分は自動削除。180 日超は確認。 | `30`
+`retention_days` | レポート/メディアの保持日数。超過分は自動削除。180 日超は確認（CLI は端末プロンプト、GUI は画面内確認）。 | `30`
 
 各ウィンドウで HTML レポートを生成し、コントロールチャットへ送信後、メッセージ（引用・メディア含む）を送ります。
 

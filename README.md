@@ -125,7 +125,7 @@ Once installed and your environment is active, the rest is the same for everyone
    - `storage.db_path` & `storage.media_dir`
    - `reporting.reports_dir` & `reporting.summary_interval_minutes` (default report interval if a target does not override it)
    - `reporting.timezone` (optional, e.g., `Asia/Shanghai`, `America/Los_Angeles`, `America/New_York`, `Asia/Tokyo`)
-   - `reporting.retention_days` (defaults to 30; when `run` starts, reports older than this many days are deleted. Values > 180 prompt for confirmation.)
+   - `reporting.retention_days` (defaults to 30; when `run` starts, reports older than this many days are deleted. CLI prompts for confirmation when values > 180; GUI uses an in-app confirm flow.)
    - `[notifications] bark_key` (optional Bark key for mirror notifications)
    - `[display] show_ids` (default `true`) & `time_format` (strftime string) control how control-chat pushes render names/timestamps
 
@@ -189,7 +189,8 @@ Launch the local UI (default: `http://127.0.0.1:8765`) to manage targets/control
 tgwatch gui
 ```
 
-The GUI also provides **Run once** and **Run daemon** buttons with a live log panel. `Run daemon` starts a background process, so closing the browser will not stop it; re-open the GUI to reattach logs. If no session file exists yet, run `python -m tgwatch run --config config.toml` once in a terminal to complete login before using the GUI runner.
+The GUI also provides **Run once**, **Run daemon**, and **Stop daemon** buttons with a live log panel. `Run daemon` starts a background process, so closing the browser will not stop it; re-open the GUI to reattach logs. If no session file exists yet, run `python -m tgwatch run --config config.toml` once in a terminal to complete login before using the GUI runner.
+When `retention_days > 180`, clicking **Run daemon** opens a retention confirmation block. You must check the risk acknowledgement before **Confirm & Start Run** becomes available. If a runner action fails, the Runner message panel shows the error.
 
 ### Once (batch report)
 

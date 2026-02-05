@@ -124,7 +124,7 @@ python -m pip install -U pip
    - `storage.db_path` 与 `storage.media_dir`
    - `reporting.reports_dir` 与 `reporting.summary_interval_minutes`（默认报告频率）
    - `reporting.timezone`（如 `Asia/Shanghai`、`America/Los_Angeles` 等）
-   - `reporting.retention_days`（报告/媒体保留天数，默认 30，超过 180 会提示确认）
+   - `reporting.retention_days`（报告/媒体保留天数，默认 30；超过 180 时，CLI 会提示确认，GUI 会走界面内确认流程）
    - `[notifications] bark_key`（可选的 Bark Key，用于手机推送）
    - `[display] show_ids`（是否显示 ID，默认 true）与 `time_format`（strftime 格式字符串）控制控制群推送的姓名/时间展示
 
@@ -187,7 +187,8 @@ python -m tgwatch doctor --config config.toml
 tgwatch gui
 ```
 
-GUI 还提供 **Run once** 与 **Run daemon** 按钮并显示运行日志。`Run daemon` 会启动后台进程，关闭浏览器不会停止运行；重新打开 GUI 会继续显示日志。若尚未生成 session 文件，请先在终端运行一次 `python -m tgwatch run --config config.toml` 完成登录，再使用 GUI 触发运行。
+GUI 还提供 **Run once**、**Run daemon**、**Stop daemon** 按钮并显示运行日志。`Run daemon` 会启动后台进程，关闭浏览器不会停止运行；重新打开 GUI 会继续显示日志。若尚未生成 session 文件，请先在终端运行一次 `python -m tgwatch run --config config.toml` 完成登录，再使用 GUI 触发运行。
+当 `retention_days > 180` 时，点击 **Run daemon** 会先出现界面内确认区。勾选风险确认后，**Confirm & Start Run** 才可点击。若操作失败，Runner 消息区会显示错误信息。
 
 ### Once（单次报告）
 

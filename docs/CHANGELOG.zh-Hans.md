@@ -16,6 +16,7 @@
 - GUI 新增启动前保护：缺少 session 时醒目提示并禁用 Run/Once，`retention_days > 180` 改为界面确认，避免终端 y/n 卡住（REQ-20260205-006-gui-run-guards）。
 - 优化 GUI retention 交互：Run daemon 保持可点击，点击后进入确认流程（勾选后确认按钮才可用）再启动长保留运行（REQ-20260205-007-gui-retention-click-confirm-flow）。
 - GUI 新增 `Stop daemon` 控制，并修复 run 启动后 retention 确认框不消失的问题，可直接在 Runner 面板管理 daemon 生命周期（REQ-20260205-008-gui-run-stop-and-confirm-dismiss）。
+- 在 push 前补强 GUI Runner 错误处理路径，并同步 run/stop/retention 确认流程文档（REQ-20260205-009-pre-push-calibration-audit）。
 
 ## 0.3.0 — 2026-01-29
 - 新增双账号桥接：由发送端账号推送控制群消息，使主账号恢复通知（REQ-20260129-002-bridge-implementation）。

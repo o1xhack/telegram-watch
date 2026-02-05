@@ -124,7 +124,7 @@ python -m pip install -U pip
    - `storage.db_path` と `storage.media_dir`
    - `reporting.reports_dir`, `reporting.summary_interval_minutes`（デフォルトのレポート間隔）
    - `reporting.timezone`（例：`Asia/Tokyo`、`America/Los_Angeles` 等）
-   - `reporting.retention_days`（レポート/メディアの保持日数。デフォルト 30、180 を超えると警告）
+   - `reporting.retention_days`（レポート/メディアの保持日数。デフォルト 30。180 超は CLI では確認プロンプト、GUI では画面内確認フロー）
    - `[notifications] bark_key`（任意の Bark Key。設定するとスマホ通知を受け取れます）
    - `[display] show_ids`（ID を表示するか、デフォルト true）と `time_format`（strftime 形式）でコントロールチャットの名前/時刻表示を調整
 
@@ -187,7 +187,8 @@ python -m tgwatch doctor --config config.toml
 tgwatch gui
 ```
 
-GUI には **Run once** と **Run daemon** ボタン、およびライブログが用意されています。`Run daemon` はバックグラウンドで動作するため、ブラウザを閉じても停止しません。再度 GUI を開くとログを再表示します。まだ session ファイルが無い場合は、先に `python -m tgwatch run --config config.toml` をターミナルで一度実行してログインを完了してください。
+GUI には **Run once**、**Run daemon**、**Stop daemon** ボタンとライブログがあります。`Run daemon` はバックグラウンドで動作するため、ブラウザを閉じても停止しません。再度 GUI を開くとログを再表示します。まだ session ファイルが無い場合は、先に `python -m tgwatch run --config config.toml` をターミナルで一度実行してログインを完了してください。
+`retention_days > 180` の場合、**Run daemon** をクリックすると画面内の確認ブロックが表示されます。リスク確認にチェックを入れると **Confirm & Start Run** が有効になります。失敗時は Runner メッセージ欄にエラーが表示されます。
 
 ### Once（単発レポート）
 

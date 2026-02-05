@@ -24,8 +24,9 @@ cp config.example.toml config.toml
 tgwatch gui
 ```
 
-GUI 提供 **Run once** / **Run daemon** 按钮与运行日志。若 session 文件尚未生成，请先在终端运行一次 `python -m tgwatch run --config config.toml` 完成登录。
+GUI 提供 **Run once** / **Run daemon** / **Stop daemon** 按钮与运行日志。若 session 文件尚未生成，请先在终端运行一次 `python -m tgwatch run --config config.toml` 完成登录。
 你也可以在 GUI 中选择单个目标群，或在 CLI 上使用 `--target`（名称或 `target_chat_id`）来限制 **Run once** 的执行范围。GUI 里还有 **Push to control chat** 开关（默认关闭），日志面板最多显示 200 行并可滚动，空日志保持紧凑高度。
+当 `retention_days > 180` 时，点击 **Run daemon** 会弹出界面内确认区；勾选风险确认后，点击 **Confirm & Start Run** 才会启动。
 
 ## 2. Telegram 凭据（`[telegram]`）
 
@@ -157,7 +158,7 @@ General 主题固定 ID 为 `1`。关闭 Topic 路由时默认发送到 General�
 `reports_dir` | HTML 报告根目录，子目录按 `reports/YYYY-MM-DD/HHMM/index.html` 组织。 | `reports`
 `summary_interval_minutes` | `run` 的默认报告间隔（目标群可通过 `targets[].summary_interval_minutes` 覆盖）。 | `120`
 `timezone` | IANA 时区（如 `Asia/Shanghai`、`America/Los_Angeles`）。 | `UTC`
-`retention_days` | 报告/媒体保留天数，超过即自动清理；设置 >180 时会提示确认。 | `30`
+`retention_days` | 报告/媒体保留天数，超过即自动清理；设置 >180 时会触发确认（CLI 终端提示或 GUI 界面确认）。 | `30`
 
 每个时间窗内，tgwatch 会生成 HTML 报告并推送到控制群，然后逐条发送该窗口的消息（含引用与媒体）。
 

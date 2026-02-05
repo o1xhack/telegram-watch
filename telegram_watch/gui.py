@@ -643,32 +643,44 @@ async function startRunConfirmed() {
   if (runner.requires_retention_confirm && !state.runnerRetentionConfirmed) {
     return;
   }
-  state.runnerMessage = "";
-  updateRunnerUI();
-  const res = await fetch("/api/runner/run", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ confirm_retention: state.runnerRetentionConfirmed })
-  });
-  const payload = await res.json();
-  state.runnerMessage = payload.status || "";
-  if (payload.ok) {
-    state.runnerRetentionPrompt = false;
-    state.runnerRetentionConfirmed = false;
-    render();
+  try {
+    state.runnerMessage = "";
+    updateRunnerUI();
+    const res = await fetch("/api/runner/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm_retention: state.runnerRetentionConfirmed })
+    });
+    const payload = await res.json();
+    state.runnerMessage = payload.status || "";
+    if (payload.ok) {
+      state.runnerRetentionPrompt = false;
+      state.runnerRetentionConfirmed = false;
+      render();
+    }
+    await loadRunnerStatus();
+    updateRunnerUI();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    state.runnerMessage = `Failed to start run daemon: ${message}`;
+    updateRunnerUI();
   }
-  await loadRunnerStatus();
-  updateRunnerUI();
 }
 
 async function stopRun() {
-  state.runnerMessage = "";
-  updateRunnerUI();
-  const res = await fetch("/api/runner/stop", { method: "POST" });
-  const payload = await res.json();
-  state.runnerMessage = payload.status || "";
-  await loadRunnerStatus();
-  updateRunnerUI();
+  try {
+    state.runnerMessage = "";
+    updateRunnerUI();
+    const res = await fetch("/api/runner/stop", { method: "POST" });
+    const payload = await res.json();
+    state.runnerMessage = payload.status || "";
+    await loadRunnerStatus();
+    updateRunnerUI();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    state.runnerMessage = `Failed to stop run daemon: ${message}`;
+    updateRunnerUI();
+  }
 }
 
 async function startOnce() {
@@ -683,17 +695,23 @@ async function startOnce() {
     updateRunnerUI();
     return;
   }
-  state.runnerMessage = "";
-  updateRunnerUI();
-  const res = await fetch("/api/runner/once", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ since, target, push })
-  });
-  const payload = await res.json();
-  state.runnerMessage = payload.status || "";
-  await loadRunnerStatus();
-  updateRunnerUI();
+  try {
+    state.runnerMessage = "";
+    updateRunnerUI();
+    const res = await fetch("/api/runner/once", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ since, target, push })
+    });
+    const payload = await res.json();
+    state.runnerMessage = payload.status || "";
+    await loadRunnerStatus();
+    updateRunnerUI();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    state.runnerMessage = `Failed to start once run: ${message}`;
+    updateRunnerUI();
+  }
 }
 
 function startRunnerPolling() {
@@ -702,19 +720,31 @@ function startRunnerPolling() {
 }
 
 async function stopGui() {
-  const res = await fetch("/api/gui/stop", { method: "POST" });
-  const payload = await res.json();
-  const app = document.getElementById("app");
-  const message = payload && payload.status ? payload.status : "GUI stopped.";
-  app.innerHTML = `<div class="section"><h2>GUI stopped</h2><p>${message}</p></div>`;
+  try {
+    const res = await fetch("/api/gui/stop", { method: "POST" });
+    const payload = await res.json();
+    const app = document.getElementById("app");
+    const message = payload && payload.status ? payload.status : "GUI stopped.";
+    app.innerHTML = `<div class="section"><h2>GUI stopped</h2><p>${message}</p></div>`;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    state.status = `Failed to stop GUI: ${message}`;
+    render();
+  }
 }
 
 async function migrateConfig() {
-  const res = await fetch("/api/config/migrate", { method: "POST" });
-  const payload = await res.json();
-  state.migrationStatus = payload.status || "";
-  await loadConfig();
-  render();
+  try {
+    const res = await fetch("/api/config/migrate", { method: "POST" });
+    const payload = await res.json();
+    state.migrationStatus = payload.status || "";
+    await loadConfig();
+    render();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    state.migrationStatus = `Migration failed: ${message}`;
+    render();
+  }
 }
 
 function setByPath(obj, path, value) {
@@ -1273,16 +1303,22 @@ async function loadConfig() {
 }
 
 async function saveConfig() {
-  const res = await fetch("/api/config", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(state.data)
-  });
-  const payload = await res.json();
-  state.errors = payload.errors || [];
-  state.status = payload.status || "";
-  if (payload.data) {
-    state.data = payload.data;
+  try {
+    const res = await fetch("/api/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state.data)
+    });
+    const payload = await res.json();
+    state.errors = payload.errors || [];
+    state.status = payload.status || "";
+    if (payload.data) {
+      state.data = payload.data;
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    state.errors = [`Failed to save config: ${message}`];
+    state.status = "";
   }
   render();
   updateRunnerUI();
