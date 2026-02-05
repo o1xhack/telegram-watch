@@ -25,7 +25,7 @@ tgwatch gui
 ```
 
 GUI には **Run once** / **Run daemon** ボタンとログ表示があります。session ファイルが未作成の場合は、先に `python -m tgwatch run --config config.toml` をターミナルで一度実行してログインを完了してください。
-GUI で単一ターゲットを選択するか、CLI の `--target`（名前または `target_chat_id`）で **Run once** を対象限定できます。
+GUI で単一ターゲットを選択するか、CLI の `--target`（名前または `target_chat_id`）で **Run once** を対象限定できます。GUI には **Push to control chat** トグル（既定オフ）があり、ログは最大 200 行までスクロール表示し、空ログ時はコンパクトに保ちます。
 
 ## 2. Telegram 認証情報（`[telegram]`）
 

@@ -62,10 +62,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Also push the generated report/messages to the control chat",
     )
 
-    subparsers.add_parser(
+    run_parser = subparsers.add_parser(
         "run",
         help="Run watcher daemon",
         parents=[common],
+    )
+    run_parser.add_argument(
+        "--yes-retention",
+        action="store_true",
+        help=argparse.SUPPRESS,
     )
 
     gui_parser = subparsers.add_parser(
@@ -124,7 +129,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     elif args.command == "run":
         config = _load_config_or_exit(parser, args.config, command=args.command)
-        if not _confirm_retention(config.reporting.retention_days):
+        if not _confirm_retention(
+            config.reporting.retention_days,
+            auto_confirm=bool(getattr(args, "yes_retention", False)),
+        ):
             logging.getLogger(__name__).warning("Run cancelled by user.")
             return 1
         return asyncio.run(_run_daemon_command(config))
@@ -203,8 +211,10 @@ async def _run_daemon_command(config):
     return 0
 
 
-def _confirm_retention(retention_days: int) -> bool:
+def _confirm_retention(retention_days: int, *, auto_confirm: bool = False) -> bool:
     if retention_days <= 180:
+        return True
+    if auto_confirm:
         return True
     prompt = (
         f"reporting.retention_days is set to {retention_days} days. "

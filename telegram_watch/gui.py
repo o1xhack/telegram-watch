@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+import signal
 import subprocess
 import sys
 import threading
+import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -63,6 +65,8 @@ _CSS = """
   --radius: 18px;
   --mono: "SF Mono", "JetBrains Mono", "Fira Code", monospace;
   --sans: "Avenir Next", "Avenir", "Helvetica Neue", "Segoe UI", sans-serif;
+  --log-lines: 12;
+  --log-lines-collapsed: 2;
 }
 
 * { box-sizing: border-box; }
@@ -196,6 +200,20 @@ body {
   color: var(--muted);
 }
 
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.checkbox input {
+  margin: 0;
+}
+
 .field input,
 .field select {
   padding: 10px 12px;
@@ -267,6 +285,10 @@ body {
   margin-bottom: 16px;
 }
 
+.notice .checkbox {
+  margin-top: 10px;
+}
+
 .error {
   padding: 12px 14px;
   border-radius: 12px;
@@ -309,7 +331,7 @@ body {
   padding: 12px;
   border-radius: 12px;
   border: 1px solid rgba(27, 25, 22, 0.2);
-  max-height: 240px;
+  height: calc(var(--log-lines) * 1.4em + 24px);
   overflow-y: auto;
   white-space: pre-wrap;
 }
@@ -317,6 +339,7 @@ body {
 .log-box.empty {
   background: #f3eee8;
   color: var(--muted);
+  height: calc(var(--log-lines-collapsed) * 1.4em + 24px);
 }
 
 .runner-grid {
@@ -350,13 +373,27 @@ const state = {
   runner: null,
   runnerMessage: "",
   runnerSince: "2h",
+  runnerTarget: "",
+  runnerPush: false,
+  runnerRetentionConfirmed: false,
+  runnerRetentionPrompt: false,
   runnerLoading: false,
   locked: false,
   lockMessage: "",
   migrationStatus: ""
 };
-const runnerDefaults = { running: false, pid: null, run_log: "", once_log: "", status: "" };
+const runnerDefaults = {
+  running: false,
+  pid: null,
+  run_log: "",
+  once_log: "",
+  status: "",
+  session_ready: true,
+  requires_retention_confirm: false,
+  retention_days: 30
+};
 const keepSecret = "********";
+const LOG_MAX_LINES = 200;
 
 const limitText = (limits) => `Limits: ${limits.maxTargets} groups, ${limits.maxUsersPerTarget} users per group, ${limits.maxControlGroups} control groups.`;
 
@@ -465,6 +502,13 @@ const runnerMessageText = () => {
   return "";
 };
 
+const trimLogLines = (text) => {
+  if (!text) return "";
+  const lines = text.split("\\n");
+  if (lines.length <= LOG_MAX_LINES) return text;
+  return lines.slice(lines.length - LOG_MAX_LINES).join("\\n");
+};
+
 function updateRunnerUI() {
   const runner = state.runner || runnerDefaults;
   const statusEl = document.getElementById("runner-status");
@@ -473,8 +517,9 @@ function updateRunnerUI() {
 
   const runLogEl = document.getElementById("run-log");
   if (runLogEl) {
-    if (runner.running && runner.run_log) {
-      runLogEl.textContent = runner.run_log;
+    const runLogText = runner.running ? trimLogLines(runner.run_log || "") : "";
+    if (runner.running && runLogText) {
+      runLogEl.textContent = runLogText;
       runLogEl.classList.remove("empty");
     } else if (runner.running) {
       runLogEl.textContent = "Waiting for logs...";
@@ -487,8 +532,9 @@ function updateRunnerUI() {
 
   const onceLogEl = document.getElementById("once-log");
   if (onceLogEl) {
-    if (runner.once_log) {
-      onceLogEl.textContent = runner.once_log;
+    const onceLogText = trimLogLines(runner.once_log || "");
+    if (onceLogText) {
+      onceLogEl.textContent = onceLogText;
       onceLogEl.classList.remove("empty");
     } else {
       onceLogEl.textContent = "No recent once run.";
@@ -510,7 +556,24 @@ function updateRunnerUI() {
 
   const runButton = document.querySelector('[data-action="run-daemon"]');
   if (runButton) {
-    runButton.disabled = Boolean(runner.running);
+    const sessionReady = Boolean(runner.session_ready);
+    runButton.disabled = Boolean(runner.running || !sessionReady);
+  }
+  const stopButton = document.querySelector('[data-action="run-daemon-stop"]');
+  if (stopButton) {
+    stopButton.disabled = !Boolean(runner.running);
+  }
+  const onceButton = document.querySelector('[data-action="run-once"]');
+  if (onceButton) {
+    onceButton.disabled = !Boolean(runner.session_ready);
+  }
+  const retentionConfirmButton = document.querySelector('[data-action="run-daemon-confirm"]');
+  if (retentionConfirmButton) {
+    retentionConfirmButton.disabled = !Boolean(state.runnerRetentionConfirmed);
+  }
+  const retentionCheckbox = document.getElementById("run-retention-confirm");
+  if (retentionCheckbox) {
+    retentionCheckbox.checked = Boolean(state.runnerRetentionConfirmed);
   }
 }
 
@@ -533,6 +596,14 @@ async function loadRunnerStatus() {
     const res = await fetch("/api/runner/status");
     const payload = await res.json();
     state.runner = payload;
+    if (!payload.requires_retention_confirm) {
+      state.runnerRetentionConfirmed = false;
+      state.runnerRetentionPrompt = false;
+    }
+    if (payload.running) {
+      state.runnerRetentionConfirmed = false;
+      state.runnerRetentionPrompt = false;
+    }
     updateRunnerUI();
   } catch (err) {
     state.runnerMessage = "Runner status unavailable.";
@@ -543,9 +614,57 @@ async function loadRunnerStatus() {
 }
 
 async function startRun() {
+  const runner = state.runner || runnerDefaults;
+  if (!runner.session_ready) {
+    state.runnerMessage = "Session file not found. Please complete one terminal login first.";
+    updateRunnerUI();
+    return;
+  }
+  if (runner.requires_retention_confirm) {
+    if (!state.runnerRetentionPrompt) {
+      state.runnerRetentionPrompt = true;
+      state.runnerRetentionConfirmed = false;
+      state.runnerMessage = "";
+      render();
+      updateRunnerUI();
+      return;
+    }
+    if (!state.runnerRetentionConfirmed) {
+      state.runnerMessage = `Please confirm retention_days=${runner.retention_days} before starting run daemon.`;
+      updateRunnerUI();
+      return;
+    }
+  }
+  await startRunConfirmed();
+}
+
+async function startRunConfirmed() {
+  const runner = state.runner || runnerDefaults;
+  if (runner.requires_retention_confirm && !state.runnerRetentionConfirmed) {
+    return;
+  }
   state.runnerMessage = "";
   updateRunnerUI();
-  const res = await fetch("/api/runner/run", { method: "POST" });
+  const res = await fetch("/api/runner/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirm_retention: state.runnerRetentionConfirmed })
+  });
+  const payload = await res.json();
+  state.runnerMessage = payload.status || "";
+  if (payload.ok) {
+    state.runnerRetentionPrompt = false;
+    state.runnerRetentionConfirmed = false;
+    render();
+  }
+  await loadRunnerStatus();
+  updateRunnerUI();
+}
+
+async function stopRun() {
+  state.runnerMessage = "";
+  updateRunnerUI();
+  const res = await fetch("/api/runner/stop", { method: "POST" });
   const payload = await res.json();
   state.runnerMessage = payload.status || "";
   await loadRunnerStatus();
@@ -555,8 +674,10 @@ async function startRun() {
 async function startOnce() {
   const sinceInput = document.getElementById("once-since");
   const targetInput = document.getElementById("once-target");
+  const pushInput = document.getElementById("once-push");
   const since = sinceInput ? sinceInput.value.trim() : "";
-  const target = targetInput ? targetInput.value.trim() : "";
+  const target = targetInput ? targetInput.value.trim() : state.runnerTarget;
+  const push = pushInput ? pushInput.checked : state.runnerPush;
   if (!since) {
     state.runnerMessage = "Please enter a valid since window (e.g. 2h).";
     updateRunnerUI();
@@ -567,7 +688,7 @@ async function startOnce() {
   const res = await fetch("/api/runner/once", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ since, target })
+    body: JSON.stringify({ since, target, push })
   });
   const payload = await res.json();
   state.runnerMessage = payload.status || "";
@@ -609,7 +730,12 @@ function setByPath(obj, path, value) {
 function render() {
   const app = document.getElementById("app");
   if (!state.data) {
-    app.innerHTML = `<div class="section"><h2>Loading...</h2></div>`;
+    const errorBlock = state.errors.length
+      ? `<div class="error"><strong>Unable to load GUI</strong><ul>${state.errors
+          .map((e) => `<li>${e}</li>`)
+          .join("")}</ul></div>`
+      : "";
+    app.innerHTML = `<div class="section"><h2>Loading...</h2>${errorBlock}</div>`;
     return;
   }
   const data = state.data;
@@ -618,6 +744,8 @@ function render() {
   const controlGroups = data.control_groups;
   const targetUsers = buildTargetUsers(targets);
   const selectedUsers = collectSelectedUsers(controlGroups);
+  const selectedOnceTarget = state.runnerTarget || "";
+  const oncePushChecked = state.runnerPush;
 
   const errorBlock = state.errors.length
     ? `<div class="error"><strong>Validation issues</strong><ul>${state.errors.map(e => `<li>${e}</li>`).join("")}</ul></div>`
@@ -648,6 +776,26 @@ function render() {
   const runnerMessage = runnerMessageText();
   const runLog = runner.running ? runner.run_log : "";
   const onceLog = runner.once_log || "";
+  const sessionBanner = !runner.session_ready
+    ? `<div class="lock-banner" style="margin-bottom:16px;">
+        Session required before running
+        <p>Run this once in terminal to login: <code>python -m tgwatch run --config config.toml</code></p>
+      </div>`
+    : "";
+  const retentionNotice = runner.requires_retention_confirm && state.runnerRetentionPrompt
+    ? `<div class="notice">
+        <strong>Retention confirmation required:</strong>
+        retention_days is set to ${runner.retention_days}. Confirm before starting run daemon.
+        <label class="checkbox">
+          <input type="checkbox" id="run-retention-confirm" ${state.runnerRetentionConfirmed ? "checked" : ""} />
+          I understand long retention may consume significant disk space.
+        </label>
+        <div class="actions" style="margin-top:10px;">
+          <button class="button secondary" data-action="run-daemon-confirm" ${state.runnerRetentionConfirmed ? "" : "disabled"}>Confirm & Start Run</button>
+          <button class="button secondary" data-action="run-daemon-cancel">Cancel</button>
+        </div>
+      </div>`
+    : "";
 
   app.innerHTML = `
     <div class="header">
@@ -669,6 +817,8 @@ function render() {
     <section class="section" id="runner-section">
       <h2>Runner</h2>
       <p>Start a one-shot fetch or keep the watcher running in the background. Closing the browser will not stop a running daemon.</p>
+      ${sessionBanner}
+      ${retentionNotice}
       <div class="runner-grid">
         <div class="field">
           <label>Once Window</label>
@@ -680,20 +830,34 @@ function render() {
           <select id="once-target">
             ${(() => {
               const options = [];
-              options.push(`<option value="">All targets</option>`);
+              options.push(
+                `<option value="" ${selectedOnceTarget === "" ? "selected" : ""}>All targets</option>`
+              );
               targets.forEach((target, idx) => {
                 const label = target.name || `group-${idx + 1}`;
                 const value = String(target.target_chat_id || "").trim();
                 if (value) {
-                  options.push(`<option value="${value}">${label} (${value})</option>`);
+                  options.push(
+                    `<option value="${value}" ${value === selectedOnceTarget ? "selected" : ""}>${label} (${value})</option>`
+                  );
                 } else {
-                  options.push(`<option value="${label}">${label} (name)</option>`);
+                  options.push(
+                    `<option value="${label}" ${label === selectedOnceTarget ? "selected" : ""}>${label} (name)</option>`
+                  );
                 }
               });
               return options.join("");
             })()}
           </select>
           <small>Choose a single target, or leave as “All targets”.</small>
+        </div>
+        <div class="field">
+          <label>Once Push</label>
+          <label class="checkbox">
+            <input type="checkbox" id="once-push" ${oncePushChecked ? "checked" : ""} />
+            Push to control chat
+          </label>
+          <small>Default is off; enable to push the once report.</small>
         </div>
         <div class="field">
           <label>Daemon Status</label>
@@ -703,6 +867,7 @@ function render() {
       <div class="actions" style="margin-top:16px;">
         <button class="button" data-action="run-once">Run once</button>
         <button class="button secondary" data-action="run-daemon">Run daemon</button>
+        <button class="button secondary" data-action="run-daemon-stop" disabled>Stop daemon</button>
         <button class="button danger" data-action="stop-gui" data-allow-locked="true">Stop GUI</button>
       </div>
       <div class="runner-footnote">Stopping the GUI will not stop a running daemon.</div>
@@ -931,6 +1096,19 @@ function bindEvents() {
       state.runnerSince = target.value;
       return;
     }
+    if (target.id === "once-target") {
+      state.runnerTarget = target.value;
+      return;
+    }
+    if (target.id === "once-push") {
+      state.runnerPush = target.checked;
+      return;
+    }
+    if (target.id === "run-retention-confirm") {
+      state.runnerRetentionConfirmed = target.checked;
+      updateRunnerUI();
+      return;
+    }
     if (!target.dataset.field) return;
     const field = target.dataset.field;
     let value = target.type === "checkbox" ? target.checked : target.value;
@@ -942,6 +1120,19 @@ function bindEvents() {
 
   document.addEventListener("change", (event) => {
     const target = event.target;
+    if (target.id === "once-target") {
+      state.runnerTarget = target.value;
+      return;
+    }
+    if (target.id === "once-push") {
+      state.runnerPush = target.checked;
+      return;
+    }
+    if (target.id === "run-retention-confirm") {
+      state.runnerRetentionConfirmed = target.checked;
+      updateRunnerUI();
+      return;
+    }
     if (!target.dataset.field) return;
     const field = target.dataset.field;
     if (
@@ -1031,6 +1222,22 @@ function bindEvents() {
       startRun();
       return;
     }
+    if (action === "run-daemon-confirm") {
+      startRunConfirmed();
+      return;
+    }
+    if (action === "run-daemon-stop") {
+      stopRun();
+      return;
+    }
+    if (action === "run-daemon-cancel") {
+      state.runnerRetentionPrompt = false;
+      state.runnerRetentionConfirmed = false;
+      state.runnerMessage = "";
+      render();
+      updateRunnerUI();
+      return;
+    }
     if (action === "stop-gui") {
       stopGui();
       return;
@@ -1043,13 +1250,24 @@ function bindEvents() {
 }
 
 async function loadConfig() {
-  const res = await fetch("/api/config");
-  const payload = await res.json();
-  state.data = payload.data;
-  state.errors = payload.errors || [];
-  state.status = payload.status || "";
-  state.locked = Boolean(payload.locked);
-  state.lockMessage = payload.lock_message || "";
+  try {
+    const res = await fetch("/api/config");
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const payload = await res.json();
+    state.data = payload.data;
+    state.errors = payload.errors || [];
+    state.status = payload.status || "";
+    state.locked = Boolean(payload.locked);
+    state.lockMessage = payload.lock_message || "";
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    state.errors = [`Failed to load config: ${message}`];
+    state.status = "";
+    state.locked = true;
+    state.lockMessage = "GUI failed to load config. Reload the page or restart the GUI.";
+  }
   render();
   updateRunnerUI();
 }
@@ -1071,6 +1289,7 @@ async function saveConfig() {
 }
 
 bindEvents();
+render();
 loadConfig();
 startRunnerPolling();
 """
@@ -1093,7 +1312,9 @@ class _RunnerManager:
         running, pid = self._current_run()
         run_log = self._tail(self.run_log_path) if running else ""
         once_log = self._tail(self.once_log_path) if self.once_log_path.exists() else ""
-        config_ok, session_ready, message = self._config_health()
+        config_ok, session_ready, retention_days, requires_retention_confirm, message = (
+            self._config_health()
+        )
         return {
             "running": running,
             "pid": pid,
@@ -1102,9 +1323,11 @@ class _RunnerManager:
             "status": message or "",
             "config_ok": config_ok,
             "session_ready": session_ready,
+            "retention_days": retention_days,
+            "requires_retention_confirm": requires_retention_confirm,
         }
 
-    def start_run(self) -> dict[str, Any]:
+    def start_run(self, *, confirm_retention: bool = False) -> dict[str, Any]:
         with self.lock:
             running, pid = self._current_run()
             if running:
@@ -1115,16 +1338,47 @@ class _RunnerManager:
             session_ok, session_msg = self._session_ready(config)
             if not session_ok:
                 return {"ok": False, "status": session_msg}
+            if self._retention_confirm_required(config) and not confirm_retention:
+                return {
+                    "ok": False,
+                    "status": (
+                        "Retention confirmation required. "
+                        "Please confirm retention risk in GUI before starting run daemon."
+                    ),
+                }
             self._ensure_runtime_dir()
             self._write_log_header(self.run_log_path, "Starting run daemon.")
             proc = self._spawn_process(
-                ["-m", "tgwatch", "run", "--config", str(self.config_path)],
+                [
+                    "-m",
+                    "tgwatch",
+                    "run",
+                    "--config",
+                    str(self.config_path),
+                    "--yes-retention",
+                ],
                 log_path=self.run_log_path,
             )
             self.run_pid_path.write_text(str(proc.pid), encoding="utf-8")
             return {"ok": True, "status": f"Run started (pid {proc.pid})."}
 
-    def start_once(self, since: str, target: str | None = None) -> dict[str, Any]:
+    def stop_run(self) -> dict[str, Any]:
+        with self.lock:
+            running, pid = self._current_run()
+            if not running or pid is None:
+                return {"ok": True, "status": "Run daemon is not active."}
+            if not self._terminate_run_process(pid):
+                return {"ok": False, "status": f"Failed to stop run daemon (pid {pid})."}
+            self.run_pid_path.unlink(missing_ok=True)
+            self._write_log_header(self.run_log_path, f"Stopped run daemon (pid {pid}).")
+            return {"ok": True, "status": f"Run stopped (pid {pid})."}
+
+    def start_once(
+        self,
+        since: str,
+        target: str | None = None,
+        push: bool = False,
+    ) -> dict[str, Any]:
         if not since:
             return {"ok": False, "status": "since is required"}
         config, message = self._load_config()
@@ -1133,12 +1387,24 @@ class _RunnerManager:
         session_ok, session_msg = self._session_ready(config)
         if not session_ok:
             return {"ok": False, "status": session_msg}
+        if target:
+            target_key = target.strip()
+            if target_key not in config.target_by_name:
+                try:
+                    target_chat_id = int(target_key)
+                except (TypeError, ValueError):
+                    return {"ok": False, "status": f"Unknown target: {target}"}
+                if target_chat_id not in config.target_by_chat_id:
+                    return {"ok": False, "status": f"Unknown target: {target}"}
         self._ensure_runtime_dir()
         header = f"Starting once (since {since})"
         args = ["-m", "tgwatch", "once", "--config", str(self.config_path), "--since", since]
         if target:
             args.extend(["--target", target])
             header += f" target={target}"
+        if push:
+            args.append("--push")
+            header += " push=true"
         self._write_log_header(self.once_log_path, f"{header}.")
         self._spawn_process(
             args,
@@ -1147,6 +1413,8 @@ class _RunnerManager:
         status = f"Once started (since {since})."
         if target:
             status = f"Once started (since {since}, target {target})."
+        if push:
+            status = status.replace(").", ", push enabled).")
         return {"ok": True, "status": status}
 
     def _ensure_runtime_dir(self) -> None:
@@ -1193,6 +1461,38 @@ class _RunnerManager:
             return False
         return str(pid) in result.stdout
 
+    def _terminate_run_process(self, pid: int) -> bool:
+        if pid <= 0:
+            return False
+        if os.name == "nt":
+            try:
+                result = subprocess.run(
+                    ["taskkill", "/PID", str(pid), "/T", "/F"],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+            except OSError:
+                return False
+            return result.returncode == 0 or not self._pid_is_running(pid)
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            return not self._pid_is_running(pid)
+        for _ in range(10):
+            if not self._pid_is_running(pid):
+                return True
+            time.sleep(0.1)
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            return not self._pid_is_running(pid)
+        for _ in range(10):
+            if not self._pid_is_running(pid):
+                return True
+            time.sleep(0.1)
+        return not self._pid_is_running(pid)
+
     def _load_config(self) -> tuple[Any | None, str | None]:
         if not self.config_path.exists():
             return None, f"Config not found: {self.config_path.name}"
@@ -1208,14 +1508,20 @@ class _RunnerManager:
             return False, "Sender session file not found. Run `python -m tgwatch run --config ...` once in a terminal."
         return True, None
 
-    def _config_health(self) -> tuple[bool, bool, str | None]:
+    def _retention_confirm_required(self, config: Any) -> bool:
+        retention_days = getattr(config.reporting, "retention_days", 30)
+        return int(retention_days) > 180
+
+    def _config_health(self) -> tuple[bool, bool, int, bool, str | None]:
         config, message = self._load_config()
         if message:
-            return False, False, message
+            return False, False, 30, False, message
+        retention_days = int(getattr(config.reporting, "retention_days", 30))
+        requires_retention_confirm = self._retention_confirm_required(config)
         session_ok, session_msg = self._session_ready(config)
         if not session_ok:
-            return True, False, session_msg
-        return True, True, None
+            return True, False, retention_days, requires_retention_confirm, session_msg
+        return True, True, retention_days, requires_retention_confirm, None
 
     def _spawn_process(self, args: list[str], *, log_path: Path) -> subprocess.Popen:
         self._ensure_runtime_dir()
@@ -1326,6 +1632,9 @@ class _GuiHandler(BaseHTTPRequestHandler):
         if path == "/api/runner/once":
             self._handle_runner_once()
             return
+        if path == "/api/runner/stop":
+            self._handle_runner_stop()
+            return
         if path == "/api/gui/stop":
             self._handle_gui_stop()
             return
@@ -1409,7 +1718,13 @@ class _GuiHandler(BaseHTTPRequestHandler):
         self._send_json(HTTPStatus.OK, payload)
 
     def _handle_runner_run(self) -> None:
-        payload = self.server.runner.start_run()
+        try:
+            request_payload = self._read_json()
+        except ValueError:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"status": "Invalid JSON"})
+            return
+        confirm_retention = bool(request_payload.get("confirm_retention", False))
+        payload = self.server.runner.start_run(confirm_retention=confirm_retention)
         status = HTTPStatus.OK if payload.get("ok", True) else HTTPStatus.BAD_REQUEST
         self._send_json(status, payload)
 
@@ -1421,9 +1736,15 @@ class _GuiHandler(BaseHTTPRequestHandler):
             return
         since = str(payload.get("since", "")).strip()
         target = str(payload.get("target", "")).strip() or None
-        response = self.server.runner.start_once(since, target)
+        push = bool(payload.get("push", False))
+        response = self.server.runner.start_once(since, target, push)
         status = HTTPStatus.OK if response.get("ok", True) else HTTPStatus.BAD_REQUEST
         self._send_json(status, response)
+
+    def _handle_runner_stop(self) -> None:
+        payload = self.server.runner.stop_run()
+        status = HTTPStatus.OK if payload.get("ok", True) else HTTPStatus.BAD_REQUEST
+        self._send_json(status, payload)
 
     def _handle_gui_stop(self) -> None:
         self._send_json(

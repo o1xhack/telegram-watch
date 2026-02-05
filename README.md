@@ -140,6 +140,8 @@ tgwatch once --config config.toml --since 2h --target group-1
 tgwatch once --config config.toml --since 2h --target -1001234567890
 ```
 
+The GUI Run once panel includes a **Push to control chat** toggle (default off).
+
 ### Migration
 
 If you upgrade from an older config (missing `config_version`), tgwatch will stop and prompt you to migrate.

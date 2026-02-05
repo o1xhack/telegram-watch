@@ -122,13 +122,14 @@ async def run_once(
             send_client = _build_client(config)
             await _start_client(send_client, "primary")
         try:
-            await _push_once_reports(
-                send_client,
-                config,
-                stored_by_target,
-                since,
-                until,
-                report_paths,
+                await _push_once_reports(
+                    send_client,
+                    config,
+                    targets,
+                    stored_by_target,
+                    since,
+                    until,
+                    report_paths,
                 bark_context=(f"(since {since_label})" if since_label else None),
             )
         except Exception:
@@ -138,13 +139,14 @@ async def run_once(
                 primary = _build_client(config)
                 await primary.start()
                 try:
-                    await _push_once_reports(
-                        primary,
-                        config,
-                        stored_by_target,
-                        since,
-                        until,
-                        report_paths,
+                        await _push_once_reports(
+                            primary,
+                            config,
+                            targets,
+                            stored_by_target,
+                            since,
+                            until,
+                            report_paths,
                         bark_context=(f"(since {since_label})" if since_label else None),
                     )
                 finally:
@@ -827,6 +829,7 @@ class _ActivityTracker:
 async def _push_once_reports(
     client: TelegramClient,
     config: Config,
+    targets: Sequence[TargetGroupConfig],
     stored_by_target: dict[str, list[DbMessage]],
     since: datetime,
     until: datetime,
@@ -835,7 +838,7 @@ async def _push_once_reports(
     bark_context: str | None = None,
     fallback_client: TelegramClient | None = None,
 ) -> None:
-    for target, report_path in zip(config.targets, report_paths):
+    for target, report_path in zip(targets, report_paths):
         control = config.control_groups[target.control_group or ""]
         messages = stored_by_target.get(target.name, [])
         await _send_report_bundle(

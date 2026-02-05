@@ -25,7 +25,7 @@ tgwatch gui
 ```
 
 GUI 提供 **Run once** / **Run daemon** 按钮与运行日志。若 session 文件尚未生成，请先在终端运行一次 `python -m tgwatch run --config config.toml` 完成登录。
-你也可以在 GUI 中选择单个目标群，或在 CLI 上使用 `--target`（名称或 `target_chat_id`）来限制 **Run once** 的执行范围。
+你也可以在 GUI 中选择单个目标群，或在 CLI 上使用 `--target`（名称或 `target_chat_id`）来限制 **Run once** 的执行范围。GUI 里还有 **Push to control chat** 开关（默认关闭），日志面板最多显示 200 行并可滚动，空日志保持紧凑高度。
 
 ## 2. Telegram 凭据（`[telegram]`）
 

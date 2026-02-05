@@ -25,7 +25,7 @@ tgwatch gui
 ```
 
 The GUI includes **Run once** / **Run daemon** buttons with live logs. If the session file does not exist yet, run `python -m tgwatch run --config config.toml` once in a terminal to complete login first.
-You can also limit **Run once** to a single target by selecting it in the GUI or by passing `--target` (name or `target_chat_id`) on the CLI.
+You can also limit **Run once** to a single target by selecting it in the GUI or by passing `--target` (name or `target_chat_id`) on the CLI. The GUI includes a **Push to control chat** toggle (default off), and log panels show up to 200 lines with scrolling while staying compact when empty.
 
 ## 2. Telegram credentials (`[telegram]`)
 

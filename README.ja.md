@@ -139,6 +139,8 @@ tgwatch once --config config.toml --since 2h --target group-1
 tgwatch once --config config.toml --since 2h --target -1001234567890
 ```
 
+GUI の Run once に **Push to control chat** トグルを追加しました（既定はオフ）。
+
 ### 移行
 
 古い設定（`config_version` がない）から更新すると、tgwatch は停止して移行を促します。

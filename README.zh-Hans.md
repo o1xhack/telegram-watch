@@ -139,6 +139,8 @@ tgwatch once --config config.toml --since 2h --target group-1
 tgwatch once --config config.toml --since 2h --target -1001234567890
 ```
 
+GUI 的 Run once 区域新增 **Push to control chat** 选项（默认关闭）。
+
 ### 迁移
 
 如果从旧配置升级（缺少 `config_version`），tgwatch 会停止并提示迁移。

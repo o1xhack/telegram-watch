@@ -127,6 +127,40 @@ def test_resolve_once_targets_invalid(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_push_once_reports_uses_selected_targets(monkeypatch, tmp_path: Path):
+    config = build_config(tmp_path)
+    selected = (config.targets[0],)
+    captured: list[str] = []
+
+    async def fake_send_report_bundle(
+        _client,
+        _config,
+        _control,
+        target,
+        _messages,
+        _since,
+        _until,
+        _report_path,
+        **_kwargs,
+    ):
+        captured.append(target.name)
+
+    monkeypatch.setattr(runner, "_send_report_bundle", fake_send_report_bundle)
+
+    await runner._push_once_reports(
+        object(),
+        config,
+        selected,
+        {selected[0].name: []},
+        datetime.now(timezone.utc) - timedelta(hours=1),
+        datetime.now(timezone.utc),
+        [tmp_path / "report.html"],
+    )
+
+    assert captured == [selected[0].name]
+
+
+@pytest.mark.asyncio
 async def test_summary_loop_passes_tracker_and_bark_context(monkeypatch, tmp_path: Path):
     config = build_config(tmp_path)
     target = config.targets[0]

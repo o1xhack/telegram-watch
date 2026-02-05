@@ -12,6 +12,10 @@
 - 簡化遷移流程，只保留 `config-old-0.1.toml` 備份（REQ-20260205-002-drop-config-sample）。
 - 新增 run once 單一目標過濾（CLI/GUI 可選單一群組）（REQ-20260205-003-once-target-filter）。
 - 將 `config-old-*.toml` 遷移備份加入 git 忽略（REQ-20260205-004-ignore-old-configs）。
+- GUI 增加 run once 推送開關與日誌顯示上限（REQ-20260205-005-gui-once-push-toggle）。
+- GUI 新增啟動前保護：缺少 session 時顯示醒目提示並禁用 Run/Once，`retention_days > 180` 改為介面確認，避免終端 y/n 卡住（REQ-20260205-006-gui-run-guards）。
+- 優化 GUI retention 互動：Run daemon 保持可點擊，點擊後進入確認流程（勾選後確認按鈕才可用）再啟動長保留執行（REQ-20260205-007-gui-retention-click-confirm-flow）。
+- GUI 新增 `Stop daemon` 控制，並修復 run 啟動後 retention 確認框不消失的問題，可直接在 Runner 面板管理 daemon 生命週期（REQ-20260205-008-gui-run-stop-and-confirm-dismiss）。
 
 ## 0.3.0 — 2026-01-29
 - 新增雙帳號橋接：由發送端帳號推送控制群訊息，使主帳號恢復通知（REQ-20260129-002-bridge-implementation）。

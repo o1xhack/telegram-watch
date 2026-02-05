@@ -12,6 +12,10 @@
 - Simplified migration to only keep `config-old-0.1.toml` backups (REQ-20260205-002-drop-config-sample).
 - Added single-target filtering for run-once in CLI and GUI (REQ-20260205-003-once-target-filter).
 - Ignored `config-old-*.toml` migration backups in git (REQ-20260205-004-ignore-old-configs).
+- Added GUI run-once push toggle and log view limits (REQ-20260205-005-gui-once-push-toggle).
+- Added GUI pre-run guards: missing-session warning with disabled Run/Once buttons, plus retention confirmation for `retention_days > 180` without terminal y/n blocking (REQ-20260205-006-gui-run-guards).
+- Refined GUI retention UX: Run daemon stays clickable and now opens a click-to-confirm flow (checkbox-gated confirm button) before starting long-retention runs (REQ-20260205-007-gui-retention-click-confirm-flow).
+- Added GUI `Stop daemon` control and fixed retention confirmation dismissal after run starts, so daemon lifecycle can be managed directly in the Runner panel (REQ-20260205-008-gui-run-stop-and-confirm-dismiss).
 
 ## 0.3.0 — 2026-01-29
 - Added dual-account bridging so a sender account can post control-group updates and restore notifications for the primary account (REQ-20260129-002-bridge-implementation).
