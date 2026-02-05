@@ -91,6 +91,8 @@ python -m pip install -U pip
    cp config.example.toml config.toml
    ```
 
+   ワンクリックで始める場合は `launch_tgwatch.command`（macOS）または `launch_tgwatch.bat`（Windows）をダブルクリックしてください。.venv を作成し、依存をインストールし、`config.toml` が無ければコピーして GUI を開きます。
+
    ヒント：ローカル GUI を起動して編集できます（既定 `http://127.0.0.1:8765`）。
 
    ```bash
@@ -107,17 +109,18 @@ python -m pip install -U pip
 
 3. 手動で編集する場合は次の値を入力します：
 
+   - `config_version`（必ず `1.0`）
    - `telegram.api_id` / `telegram.api_hash`
    - `telegram.session_file`（デフォルト `data/tgwatch.session`）
    - `[sender] session_file`（任意：通知復元のために送信専用の第二アカウントを使う場合）
-   - `targets[].name`（各ターゲットグループの名前/ラベル）
+   - `targets[].name`（任意ラベル。省略時は `group-1`、`group-2` などで表示）
    - `targets[].target_chat_id`（監視対象グループ/チャンネルの ID）
    - `targets[].tracked_user_ids`（追跡するユーザー ID の配列）
    - `targets[].summary_interval_minutes`（任意：ターゲットごとのレポート間隔）
    - `targets[].control_group`（任意：複数の control group がある場合は必須）
    - `[targets.tracked_user_aliases]`（オプション：ID と表示名の対応表）
    - `control_groups.<name>.control_chat_id`（レポート・コマンドの送受信先）
-   - `control_groups.<name>.is_forum` / `control_groups.<name>.topic_routing_enabled` / `[control_groups.<name>.topic_user_map]`（任意：ユーザー別に TG Topic へ振り分け）
+   - `control_groups.<name>.is_forum` / `control_groups.<name>.topic_routing_enabled` / `[control_groups.<name>.topic_target_map.<target_chat_id>]`（任意：ユーザー別に TG Topic へ振り分け）
    - `storage.db_path` と `storage.media_dir`
    - `reporting.reports_dir`, `reporting.summary_interval_minutes`（デフォルトのレポート間隔）
    - `reporting.timezone`（例：`Asia/Tokyo`、`America/Los_Angeles` 等）
@@ -126,6 +129,25 @@ python -m pip install -U pip
    - `[display] show_ids`（ID を表示するか、デフォルト true）と `time_format`（strftime 形式）でコントロールチャットの名前/時刻表示を調整
 
 単一ターゲット構成は従来どおり `[target]` + `[control]` でも動作します。
+
+### 単一ターゲット Run once
+
+`tgwatch once` は既定で全ターゲットを実行します。単一ターゲットだけ実行したい場合は、ターゲット名または `target_chat_id` を指定します。
+
+```bash
+tgwatch once --config config.toml --since 2h --target group-1
+tgwatch once --config config.toml --since 2h --target -1001234567890
+```
+
+### 移行
+
+古い設定（`config_version` がない）から更新すると、tgwatch は停止して移行を促します。
+
+1. GUI はロックされ、**Migrate Config** ボタンが表示されます。
+2. CLI の `run`/`once` は赤字エラーと移行確認を表示します。
+3. 移行で `config.toml` を `config-old-0.1.toml` に改名し、値を引き継いだ新しい `config.toml` を作成します。
+
+再実行前に新しい `config.toml` を確認してください。`config-old-0.1.toml` などのバックアップは git で無視されます。
 
 ### Bark Key の取得方法
 
@@ -162,6 +184,8 @@ python -m tgwatch doctor --config config.toml
 ```bash
 tgwatch gui
 ```
+
+GUI には **Run once** と **Run daemon** ボタン、およびライブログが用意されています。`Run daemon` はバックグラウンドで動作するため、ブラウザを閉じても停止しません。再度 GUI を開くとログを再表示します。まだ session ファイルが無い場合は、先に `python -m tgwatch run --config config.toml` をターミナルで一度実行してログインを完了してください。
 
 ### Once（単発レポート）
 

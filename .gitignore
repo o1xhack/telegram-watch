@@ -209,6 +209,7 @@ __marimo__/
 # --- tgwatch project-specific (secrets + local state) ---
 # real config with api_hash / chat ids
 config.toml
+config-old-*.toml
 
 # Telethon session files
 *.session

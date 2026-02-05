@@ -1,3 +1,5 @@
+config_version = 1.0
+
 [telegram]
 api_id = 123456
 api_hash = "PUT_YOUR_API_HASH_HERE"
@@ -31,15 +33,18 @@ control_chat_id = -1009876543210
 is_forum = false
 topic_routing_enabled = false
 
-[control_groups.main.topic_user_map]
+[control_groups.main.topic_target_map."-1001234567890"]
 11111111 = 9001
 22222222 = 9002
+
+[control_groups.main.topic_target_map."-1001234567899"]
+33333333 = 9101
 
 # [control_groups.alt]
 # control_chat_id = -1001234567000
 # is_forum = true
 # topic_routing_enabled = true
-# [control_groups.alt.topic_user_map]
+# [control_groups.alt.topic_target_map."-1001234567899"]
 # 33333333 = 9101
 
 [storage]

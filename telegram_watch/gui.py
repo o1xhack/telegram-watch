@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import subprocess
+import sys
+import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -18,6 +22,7 @@ from .config import (
     MAX_USERS_PER_TARGET,
     load_config,
 )
+from .migration import migrate_config
 
 try:  # pragma: no cover - Python 3.11+ always hits first branch
     import tomllib
@@ -271,8 +276,57 @@ body {
   margin-bottom: 16px;
 }
 
+.lock-banner {
+  padding: 18px;
+  border-radius: 16px;
+  border: 2px solid var(--danger);
+  background: #fdecea;
+  color: var(--danger);
+  font-weight: 700;
+  font-size: 20px;
+  margin-bottom: 20px;
+}
+
+.lock-banner p {
+  margin: 8px 0 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #7f1d1d;
+}
+
 .status {
   font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.log-box {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.4;
+  background: #1b1916;
+  color: #f5f1ec;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(27, 25, 22, 0.2);
+  max-height: 240px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+.log-box.empty {
+  background: #f3eee8;
+  color: var(--muted);
+}
+
+.runner-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.runner-footnote {
+  margin-top: 12px;
   font-size: 12px;
   color: var(--muted);
 }
@@ -289,7 +343,19 @@ body {
 """
 
 _JS = """
-const state = { data: null, errors: [], status: "" };
+const state = {
+  data: null,
+  errors: [],
+  status: "",
+  runner: null,
+  runnerMessage: "",
+  runnerSince: "2h",
+  runnerLoading: false,
+  locked: false,
+  lockMessage: "",
+  migrationStatus: ""
+};
+const runnerDefaults = { running: false, pid: null, run_log: "", once_log: "", status: "" };
 const keepSecret = "********";
 
 const limitText = (limits) => `Limits: ${limits.maxTargets} groups, ${limits.maxUsersPerTarget} users per group, ${limits.maxControlGroups} control groups.`;
@@ -307,8 +373,228 @@ const blankControlGroup = () => ({
   control_chat_id: "",
   is_forum: false,
   topic_routing_enabled: false,
-  topic_user_map: [{ user_id: "", topic_id: "" }]
+  topic_target_map: [{ user_key: "", target_chat_id: "", user_id: "", topic_id: "" }]
 });
+
+const buildTargetUsers = (targets) => {
+  const users = [];
+  targets.forEach((target, tIdx) => {
+    const name = target.name || `group-${tIdx + 1}`;
+    const targetChatId = String(target.target_chat_id || "").trim();
+    if (!targetChatId) return;
+    (target.tracked_users || []).forEach((user) => {
+      const id = String(user.id || "").trim();
+      if (!id) return;
+      const alias = String(user.alias || "").trim();
+      const label = `${name} - ${id}${alias ? ` (${alias})` : ""}`;
+      const key = `${targetChatId}|${id}`;
+      users.push({ key, user_id: id, target_chat_id: targetChatId, label, targetName: name });
+    });
+  });
+  return users;
+};
+
+const entryKey = (entry) => {
+  if (!entry) return "";
+  const key = String(entry.user_key || "").trim();
+  if (key) return key;
+  const targetChatId = String(entry.target_chat_id || "").trim();
+  const userId = String(entry.user_id || "").trim();
+  if (targetChatId && userId) return `${targetChatId}|${userId}`;
+  return "";
+};
+
+const collectSelectedUsers = (controlGroups) => {
+  const selected = new Set();
+  controlGroups.forEach((group) => {
+    if (!group.topic_routing_enabled) return;
+    (group.topic_target_map || []).forEach((entry) => {
+      const value = entryKey(entry);
+      if (value) selected.add(value);
+    });
+  });
+  return selected;
+};
+
+const mapTargetsToControl = (targets, controlGroups, key) => {
+  if (controlGroups.length === 1) {
+    return targets.map((target, idx) => target.name || `group-${idx + 1}`);
+  }
+  return targets
+    .filter((target) => String(target.control_group || "") === String(key || ""))
+    .map((target, idx) => target.name || `group-${idx + 1}`);
+};
+
+const buildUserOptions = (targetUsers, selectedUsers, currentValue) => {
+  const available = new Set(selectedUsers);
+  if (currentValue) {
+    available.delete(currentValue);
+  }
+  const options = [];
+  const seen = new Set();
+  targetUsers.forEach((user) => {
+    if (available.has(user.key)) return;
+    const label = user.label;
+    const value = user.key;
+    if (seen.has(value)) return;
+    seen.add(value);
+    options.push(`<option value="${value}">${label}</option>`);
+  });
+  if (currentValue && !targetUsers.some((user) => user.key === currentValue)) {
+    options.unshift(`<option value="${currentValue}">Unknown user (${currentValue})</option>`);
+  }
+  if (!options.length) {
+    options.push(`<option value="">No available users</option>`);
+  } else {
+    options.unshift(`<option value="">Select user</option>`);
+  }
+  return options.join("");
+};
+
+const runnerStatusText = (runner) => {
+  if (!runner) return "Checking status...";
+  if (runner.running) {
+    return runner.pid ? `Running (pid ${runner.pid})` : "Running";
+  }
+  return "Not running";
+};
+
+const runnerMessageText = () => {
+  if (state.runner && state.runner.status) return state.runner.status;
+  if (state.runnerMessage) return state.runnerMessage;
+  return "";
+};
+
+function updateRunnerUI() {
+  const runner = state.runner || runnerDefaults;
+  const statusEl = document.getElementById("runner-status");
+  if (!statusEl) return;
+  statusEl.textContent = runnerStatusText(runner);
+
+  const runLogEl = document.getElementById("run-log");
+  if (runLogEl) {
+    if (runner.running && runner.run_log) {
+      runLogEl.textContent = runner.run_log;
+      runLogEl.classList.remove("empty");
+    } else if (runner.running) {
+      runLogEl.textContent = "Waiting for logs...";
+      runLogEl.classList.add("empty");
+    } else {
+      runLogEl.textContent = "No active run.";
+      runLogEl.classList.add("empty");
+    }
+  }
+
+  const onceLogEl = document.getElementById("once-log");
+  if (onceLogEl) {
+    if (runner.once_log) {
+      onceLogEl.textContent = runner.once_log;
+      onceLogEl.classList.remove("empty");
+    } else {
+      onceLogEl.textContent = "No recent once run.";
+      onceLogEl.classList.add("empty");
+    }
+  }
+
+  const messageEl = document.getElementById("runner-message");
+  const message = runnerMessageText();
+  if (messageEl) {
+    if (message) {
+      messageEl.textContent = message;
+      messageEl.style.display = "block";
+    } else {
+      messageEl.textContent = "";
+      messageEl.style.display = "none";
+    }
+  }
+
+  const runButton = document.querySelector('[data-action="run-daemon"]');
+  if (runButton) {
+    runButton.disabled = Boolean(runner.running);
+  }
+}
+
+function applyLockState() {
+  const locked = Boolean(state.locked);
+  const banner = document.getElementById("lock-banner");
+  if (banner) {
+    banner.style.display = locked ? "block" : "none";
+  }
+  document.querySelectorAll("#app input, #app select, #app button, #app textarea").forEach((el) => {
+    if (el.dataset.allowLocked) return;
+    el.disabled = locked;
+  });
+}
+
+async function loadRunnerStatus() {
+  if (state.runnerLoading) return;
+  state.runnerLoading = true;
+  try {
+    const res = await fetch("/api/runner/status");
+    const payload = await res.json();
+    state.runner = payload;
+    updateRunnerUI();
+  } catch (err) {
+    state.runnerMessage = "Runner status unavailable.";
+    updateRunnerUI();
+  } finally {
+    state.runnerLoading = false;
+  }
+}
+
+async function startRun() {
+  state.runnerMessage = "";
+  updateRunnerUI();
+  const res = await fetch("/api/runner/run", { method: "POST" });
+  const payload = await res.json();
+  state.runnerMessage = payload.status || "";
+  await loadRunnerStatus();
+  updateRunnerUI();
+}
+
+async function startOnce() {
+  const sinceInput = document.getElementById("once-since");
+  const targetInput = document.getElementById("once-target");
+  const since = sinceInput ? sinceInput.value.trim() : "";
+  const target = targetInput ? targetInput.value.trim() : "";
+  if (!since) {
+    state.runnerMessage = "Please enter a valid since window (e.g. 2h).";
+    updateRunnerUI();
+    return;
+  }
+  state.runnerMessage = "";
+  updateRunnerUI();
+  const res = await fetch("/api/runner/once", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ since, target })
+  });
+  const payload = await res.json();
+  state.runnerMessage = payload.status || "";
+  await loadRunnerStatus();
+  updateRunnerUI();
+}
+
+function startRunnerPolling() {
+  loadRunnerStatus();
+  window.setInterval(loadRunnerStatus, 2000);
+}
+
+async function stopGui() {
+  const res = await fetch("/api/gui/stop", { method: "POST" });
+  const payload = await res.json();
+  const app = document.getElementById("app");
+  const message = payload && payload.status ? payload.status : "GUI stopped.";
+  app.innerHTML = `<div class="section"><h2>GUI stopped</h2><p>${message}</p></div>`;
+}
+
+async function migrateConfig() {
+  const res = await fetch("/api/config/migrate", { method: "POST" });
+  const payload = await res.json();
+  state.migrationStatus = payload.status || "";
+  await loadConfig();
+  render();
+}
 
 function setByPath(obj, path, value) {
   const parts = path.split(".");
@@ -330,16 +616,38 @@ function render() {
   const limits = data.limits;
   const targets = data.targets;
   const controlGroups = data.control_groups;
+  const targetUsers = buildTargetUsers(targets);
+  const selectedUsers = collectSelectedUsers(controlGroups);
 
   const errorBlock = state.errors.length
     ? `<div class="error"><strong>Validation issues</strong><ul>${state.errors.map(e => `<li>${e}</li>`).join("")}</ul></div>`
     : "";
 
-  const statusBlock = state.status ? `<div class="notice">${state.status}</div>` : "";
+  const noticeParts = [];
+  if (state.status) noticeParts.push(state.status);
+  if (state.migrationStatus) noticeParts.push(state.migrationStatus);
+  const statusBlock = noticeParts.length ? `<div class="notice">${noticeParts.join("<br />")}</div>` : "";
+  const lockBanner = state.locked
+    ? `<div class="lock-banner" id="lock-banner">
+        Configuration locked
+        <p>${state.lockMessage || "This config is outdated or invalid. Rewrite config.toml and reload the GUI."}</p>
+        <div style="margin-top:12px;">
+          <button class="button danger" data-action="migrate-config" data-allow-locked="true">Migrate Config</button>
+        </div>
+      </div>`
+    : "";
 
   const controlOptions = controlGroups
     .map((group, idx) => `<option value="${group.key}">${group.key || `control-${idx + 1}`}</option>`)
     .join("");
+  const defaultControlLabel = controlGroups.length === 1
+    ? `default (${controlGroups[0].key || "control-1"})`
+    : "Select";
+
+  const runner = state.runner || runnerDefaults;
+  const runnerMessage = runnerMessageText();
+  const runLog = runner.running ? runner.run_log : "";
+  const onceLog = runner.once_log || "";
 
   app.innerHTML = `
     <div class="header">
@@ -351,11 +659,65 @@ function render() {
       </div>
       <div class="actions">
         <button class="button" data-action="save">Save Config</button>
-        <button class="button secondary" data-action="reload">Reload</button>
+        <button class="button secondary" data-action="reload" data-allow-locked="true">Reload</button>
       </div>
     </div>
     ${statusBlock}
     ${errorBlock}
+    ${lockBanner}
+
+    <section class="section" id="runner-section">
+      <h2>Runner</h2>
+      <p>Start a one-shot fetch or keep the watcher running in the background. Closing the browser will not stop a running daemon.</p>
+      <div class="runner-grid">
+        <div class="field">
+          <label>Once Window</label>
+          <input id="once-since" value="${state.runnerSince}" placeholder="2h" />
+          <small>Examples: 10m, 2h, 2026-02-01T10:30Z</small>
+        </div>
+        <div class="field">
+          <label>Once Target</label>
+          <select id="once-target">
+            ${(() => {
+              const options = [];
+              options.push(`<option value="">All targets</option>`);
+              targets.forEach((target, idx) => {
+                const label = target.name || `group-${idx + 1}`;
+                const value = String(target.target_chat_id || "").trim();
+                if (value) {
+                  options.push(`<option value="${value}">${label} (${value})</option>`);
+                } else {
+                  options.push(`<option value="${label}">${label} (name)</option>`);
+                }
+              });
+              return options.join("");
+            })()}
+          </select>
+          <small>Choose a single target, or leave as “All targets”.</small>
+        </div>
+        <div class="field">
+          <label>Daemon Status</label>
+          <div class="status" id="runner-status">${runnerStatusText(runner)}</div>
+        </div>
+      </div>
+      <div class="actions" style="margin-top:16px;">
+        <button class="button" data-action="run-once">Run once</button>
+        <button class="button secondary" data-action="run-daemon">Run daemon</button>
+        <button class="button danger" data-action="stop-gui" data-allow-locked="true">Stop GUI</button>
+      </div>
+      <div class="runner-footnote">Stopping the GUI will not stop a running daemon.</div>
+      <div class="notice" id="runner-message" style="${runnerMessage ? "" : "display:none;"}">${runnerMessage}</div>
+      <div class="grid" style="margin-top:16px;">
+        <div>
+          <div class="status">Run logs (live)</div>
+          <pre class="log-box ${runner.running && runLog ? "" : "empty"}" id="run-log">${runner.running ? (runLog || "Waiting for logs...") : "No active run."}</pre>
+        </div>
+        <div>
+          <div class="status">Once logs</div>
+          <pre class="log-box ${onceLog ? "" : "empty"}" id="once-log">${onceLog || "No recent once run."}</pre>
+        </div>
+      </div>
+    </section>
 
     <section class="section">
       <h2>Telegram Credentials</h2>
@@ -415,7 +777,7 @@ function render() {
             <div class="field">
               <label>Control Group</label>
               <select data-field="targets.${idx}.control_group">
-                <option value="">${controlGroups.length === 1 ? "(default)" : "Select"}</option>
+                <option value="">${defaultControlLabel}</option>
                 ${controlOptions}
               </select>
             </div>
@@ -471,12 +833,20 @@ function render() {
               </select>
             </div>
           </div>
+          <div class="status" style="margin-top:12px;">
+            Mapped targets: ${(() => {
+              const mapped = mapTargetsToControl(targets, controlGroups, group.key);
+              return mapped.length ? mapped.join(", ") : "none yet";
+            })()}
+          </div>
           ${group.topic_routing_enabled ? `
           <div class="list" style="margin-top:16px;">
-            ${group.topic_user_map.map((entry, eidx) => `
+            ${group.topic_target_map.map((entry, eidx) => `
             <div class="list-row">
-              <input data-field="control_groups.${idx}.topic_user_map.${eidx}.user_id" value="${entry.user_id}" placeholder="User ID" />
-              <input data-field="control_groups.${idx}.topic_user_map.${eidx}.topic_id" value="${entry.topic_id}" placeholder="Topic ID" />
+              <select data-field="control_groups.${idx}.topic_target_map.${eidx}.user_key">
+                ${buildUserOptions(targetUsers, selectedUsers, entryKey(entry))}
+              </select>
+              <input data-field="control_groups.${idx}.topic_target_map.${eidx}.topic_id" value="${entry.topic_id}" placeholder="Topic ID" />
               <button class="button secondary" data-action="remove-topic" data-control-index="${idx}" data-topic-index="${eidx}">Remove</button>
             </div>`).join("")}
           </div>
@@ -547,6 +917,7 @@ function render() {
     const value = getByPath(state.data, field);
     select.value = String(value);
   });
+  applyLockState();
 }
 
 function getByPath(obj, path) {
@@ -556,6 +927,10 @@ function getByPath(obj, path) {
 function bindEvents() {
   document.addEventListener("input", (event) => {
     const target = event.target;
+    if (target.id === "once-since") {
+      state.runnerSince = target.value;
+      return;
+    }
     if (!target.dataset.field) return;
     const field = target.dataset.field;
     let value = target.type === "checkbox" ? target.checked : target.value;
@@ -571,9 +946,12 @@ function bindEvents() {
     const field = target.dataset.field;
     if (
       field === "sender.enabled" ||
+      field.startsWith("targets.") ||
       field.endsWith(".key") ||
       field.endsWith(".topic_routing_enabled") ||
-      field.endsWith(".is_forum")
+      field.endsWith(".is_forum") ||
+      field.endsWith(".control_group") ||
+      field.includes(".topic_target_map.")
     ) {
       render();
     }
@@ -621,14 +999,19 @@ function bindEvents() {
     }
     if (action === "add-topic") {
       const index = Number(target.dataset.controlIndex);
-      state.data.control_groups[index].topic_user_map.push({ user_id: "", topic_id: "" });
+      state.data.control_groups[index].topic_target_map.push({
+        user_key: "",
+        target_chat_id: "",
+        user_id: "",
+        topic_id: ""
+      });
       render();
       return;
     }
     if (action === "remove-topic") {
       const cIndex = Number(target.dataset.controlIndex);
       const tIndex = Number(target.dataset.topicIndex);
-      state.data.control_groups[cIndex].topic_user_map.splice(tIndex, 1);
+      state.data.control_groups[cIndex].topic_target_map.splice(tIndex, 1);
       render();
       return;
     }
@@ -638,6 +1021,23 @@ function bindEvents() {
     }
     if (action === "reload") {
       loadConfig();
+      return;
+    }
+    if (action === "run-once") {
+      startOnce();
+      return;
+    }
+    if (action === "run-daemon") {
+      startRun();
+      return;
+    }
+    if (action === "stop-gui") {
+      stopGui();
+      return;
+    }
+    if (action === "migrate-config") {
+      migrateConfig();
+      return;
     }
   });
 }
@@ -648,7 +1048,10 @@ async function loadConfig() {
   state.data = payload.data;
   state.errors = payload.errors || [];
   state.status = payload.status || "";
+  state.locked = Boolean(payload.locked);
+  state.lockMessage = payload.lock_message || "";
   render();
+  updateRunnerUI();
 }
 
 async function saveConfig() {
@@ -664,11 +1067,205 @@ async function saveConfig() {
     state.data = payload.data;
   }
   render();
+  updateRunnerUI();
 }
 
 bindEvents();
 loadConfig();
+startRunnerPolling();
 """
+
+
+_RUN_LOG_TAIL_BYTES = 12000
+
+
+class _RunnerManager:
+    def __init__(self, config_path: Path):
+        self.config_path = config_path
+        self.runtime_dir = config_path.parent / "data" / "gui"
+        self.run_pid_path = self.runtime_dir / "run.pid"
+        self.run_log_path = self.runtime_dir / "run.log"
+        self.once_log_path = self.runtime_dir / "once.log"
+        self.lock = threading.Lock()
+
+    def status_payload(self) -> dict[str, Any]:
+        self._ensure_runtime_dir()
+        running, pid = self._current_run()
+        run_log = self._tail(self.run_log_path) if running else ""
+        once_log = self._tail(self.once_log_path) if self.once_log_path.exists() else ""
+        config_ok, session_ready, message = self._config_health()
+        return {
+            "running": running,
+            "pid": pid,
+            "run_log": run_log,
+            "once_log": once_log,
+            "status": message or "",
+            "config_ok": config_ok,
+            "session_ready": session_ready,
+        }
+
+    def start_run(self) -> dict[str, Any]:
+        with self.lock:
+            running, pid = self._current_run()
+            if running:
+                return {"ok": True, "status": f"Run already active (pid {pid})."}
+            config, message = self._load_config()
+            if message:
+                return {"ok": False, "status": message}
+            session_ok, session_msg = self._session_ready(config)
+            if not session_ok:
+                return {"ok": False, "status": session_msg}
+            self._ensure_runtime_dir()
+            self._write_log_header(self.run_log_path, "Starting run daemon.")
+            proc = self._spawn_process(
+                ["-m", "tgwatch", "run", "--config", str(self.config_path)],
+                log_path=self.run_log_path,
+            )
+            self.run_pid_path.write_text(str(proc.pid), encoding="utf-8")
+            return {"ok": True, "status": f"Run started (pid {proc.pid})."}
+
+    def start_once(self, since: str, target: str | None = None) -> dict[str, Any]:
+        if not since:
+            return {"ok": False, "status": "since is required"}
+        config, message = self._load_config()
+        if message:
+            return {"ok": False, "status": message}
+        session_ok, session_msg = self._session_ready(config)
+        if not session_ok:
+            return {"ok": False, "status": session_msg}
+        self._ensure_runtime_dir()
+        header = f"Starting once (since {since})"
+        args = ["-m", "tgwatch", "once", "--config", str(self.config_path), "--since", since]
+        if target:
+            args.extend(["--target", target])
+            header += f" target={target}"
+        self._write_log_header(self.once_log_path, f"{header}.")
+        self._spawn_process(
+            args,
+            log_path=self.once_log_path,
+        )
+        status = f"Once started (since {since})."
+        if target:
+            status = f"Once started (since {since}, target {target})."
+        return {"ok": True, "status": status}
+
+    def _ensure_runtime_dir(self) -> None:
+        self.runtime_dir.mkdir(parents=True, exist_ok=True)
+
+    def _current_run(self) -> tuple[bool, int | None]:
+        pid = self._read_pid()
+        if pid is None:
+            return False, None
+        if self._pid_is_running(pid):
+            return True, pid
+        self.run_pid_path.unlink(missing_ok=True)
+        return False, None
+
+    def _read_pid(self) -> int | None:
+        if not self.run_pid_path.exists():
+            return None
+        try:
+            value = int(self.run_pid_path.read_text(encoding="utf-8").strip())
+        except (ValueError, OSError):
+            return None
+        return value if value > 0 else None
+
+    def _pid_is_running(self, pid: int) -> bool:
+        if pid <= 0:
+            return False
+        if os.name == "nt":
+            return self._pid_exists_windows(pid)
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return False
+        return True
+
+    def _pid_exists_windows(self, pid: int) -> bool:
+        try:
+            result = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid}"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except OSError:
+            return False
+        return str(pid) in result.stdout
+
+    def _load_config(self) -> tuple[Any | None, str | None]:
+        if not self.config_path.exists():
+            return None, f"Config not found: {self.config_path.name}"
+        try:
+            return load_config(self.config_path), None
+        except ConfigError as exc:
+            return None, str(exc)
+
+    def _session_ready(self, config: Any) -> tuple[bool, str | None]:
+        if not config.telegram.session_file.exists():
+            return False, "Session file not found. Run `python -m tgwatch run --config ...` once in a terminal."
+        if config.sender and not config.sender.session_file.exists():
+            return False, "Sender session file not found. Run `python -m tgwatch run --config ...` once in a terminal."
+        return True, None
+
+    def _config_health(self) -> tuple[bool, bool, str | None]:
+        config, message = self._load_config()
+        if message:
+            return False, False, message
+        session_ok, session_msg = self._session_ready(config)
+        if not session_ok:
+            return True, False, session_msg
+        return True, True, None
+
+    def _spawn_process(self, args: list[str], *, log_path: Path) -> subprocess.Popen:
+        self._ensure_runtime_dir()
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"
+        cmd = [sys.executable, *args]
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_handle = log_path.open("a", encoding="utf-8")
+        try:
+            if os.name == "nt":
+                flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+                return subprocess.Popen(
+                    cmd,
+                    cwd=str(self.config_path.parent),
+                    stdout=log_handle,
+                    stderr=log_handle,
+                    stdin=subprocess.DEVNULL,
+                    env=env,
+                    creationflags=flags,
+                )
+            return subprocess.Popen(
+                cmd,
+                cwd=str(self.config_path.parent),
+                stdout=log_handle,
+                stderr=log_handle,
+                stdin=subprocess.DEVNULL,
+                env=env,
+                start_new_session=True,
+                close_fds=True,
+            )
+        finally:
+            log_handle.close()
+
+    def _write_log_header(self, path: Path, message: str) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(f"\n=== {message} ===\n")
+
+    def _tail(self, path: Path) -> str:
+        if not path.exists():
+            return ""
+        try:
+            size = path.stat().st_size
+            with path.open("rb") as handle:
+                if size > _RUN_LOG_TAIL_BYTES:
+                    handle.seek(-_RUN_LOG_TAIL_BYTES, os.SEEK_END)
+                data = handle.read()
+        except OSError:
+            return ""
+        return data.decode("utf-8", errors="replace")
 
 
 def run_gui(config_path: Path, host: str = "127.0.0.1", port: int = 8765) -> None:
@@ -690,6 +1287,7 @@ class _GuiServer(ThreadingHTTPServer):
     def __init__(self, server_address, handler_cls, *, config_path: Path):
         super().__init__(server_address, handler_cls)
         self.config_path = config_path
+        self.runner = _RunnerManager(config_path)
 
 
 class _GuiHandler(BaseHTTPRequestHandler):
@@ -709,12 +1307,30 @@ class _GuiHandler(BaseHTTPRequestHandler):
         if path == "/api/config":
             self._handle_get_config()
             return
+        if path == "/api/runner/status":
+            self._handle_runner_status()
+            return
+        if path == "/api/gui/stop":
+            self._handle_gui_stop()
+            return
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
     def do_POST(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
         if path == "/api/config":
             self._handle_post_config()
+            return
+        if path == "/api/runner/run":
+            self._handle_runner_run()
+            return
+        if path == "/api/runner/once":
+            self._handle_runner_once()
+            return
+        if path == "/api/gui/stop":
+            self._handle_gui_stop()
+            return
+        if path == "/api/config/migrate":
+            self._handle_migrate_config()
             return
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
@@ -725,15 +1341,28 @@ class _GuiHandler(BaseHTTPRequestHandler):
         raw = _load_raw_config(self.server.config_path)
         data = _normalize_config(raw)
         errors = []
+        locked = False
+        lock_message = ""
         if self.server.config_path.exists():
             try:
                 load_config(self.server.config_path)
             except ConfigError as exc:
-                errors.append(str(exc))
+                message = str(exc)
+                errors.append(message)
+                locked = True
+                lock_message = message
+        else:
+            locked = True
+            lock_message = (
+                "config.toml not found. Copy config.example.toml and fill it, "
+                "then reload the GUI."
+            )
         payload = {
             "data": data,
             "errors": errors,
             "status": "",
+            "locked": locked,
+            "lock_message": lock_message,
         }
         self._send_json(HTTPStatus.OK, payload)
 
@@ -766,6 +1395,43 @@ class _GuiHandler(BaseHTTPRequestHandler):
         tmp_path.replace(self.server.config_path)
         data = _normalize_config(_load_raw_config(self.server.config_path))
         self._send_json(HTTPStatus.OK, {"errors": [], "status": "Saved.", "data": data})
+
+    def _handle_migrate_config(self) -> None:
+        result = migrate_config(self.server.config_path)
+        if not result.ok:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"status": result.status})
+            return
+        status = f"Migrated. Backup: {result.backup_path.name}. Review config.toml before running."
+        self._send_json(HTTPStatus.OK, {"status": status})
+
+    def _handle_runner_status(self) -> None:
+        payload = self.server.runner.status_payload()
+        self._send_json(HTTPStatus.OK, payload)
+
+    def _handle_runner_run(self) -> None:
+        payload = self.server.runner.start_run()
+        status = HTTPStatus.OK if payload.get("ok", True) else HTTPStatus.BAD_REQUEST
+        self._send_json(status, payload)
+
+    def _handle_runner_once(self) -> None:
+        try:
+            payload = self._read_json()
+        except ValueError:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"status": "Invalid JSON"})
+            return
+        since = str(payload.get("since", "")).strip()
+        target = str(payload.get("target", "")).strip() or None
+        response = self.server.runner.start_once(since, target)
+        status = HTTPStatus.OK if response.get("ok", True) else HTTPStatus.BAD_REQUEST
+        self._send_json(status, response)
+
+    def _handle_gui_stop(self) -> None:
+        self._send_json(
+            HTTPStatus.OK,
+            {"status": "GUI stopped. The run daemon (if running) stays active."},
+        )
+        shutdown_thread = threading.Thread(target=self.server.shutdown, daemon=True)
+        shutdown_thread.start()
 
     def _send_response(self, status: HTTPStatus, body: str, content_type: str) -> None:
         data = body.encode("utf-8")
@@ -808,6 +1474,7 @@ def _normalize_config(raw: dict[str, Any]) -> dict[str, Any]:
 
     api_hash = telegram.get("api_hash")
     data = {
+        "config_version": raw.get("config_version", ""),
         "limits": {
             "maxTargets": MAX_TARGET_GROUPS,
             "maxUsersPerTarget": MAX_USERS_PER_TARGET,
@@ -859,7 +1526,7 @@ def _normalize_config(raw: dict[str, Any]) -> dict[str, Any]:
             tracked_users = [{"id": "", "alias": ""}]
         targets.append(
             {
-                "name": target.get("name", f"group-{idx}"),
+                "name": target.get("name") or f"group-{idx}",
                 "target_chat_id": target.get("target_chat_id", ""),
                 "summary_interval_minutes": target.get("summary_interval_minutes", ""),
                 "control_group": target.get("control_group", ""),
@@ -880,17 +1547,31 @@ def _normalize_config(raw: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(group, dict):
             continue
         topic_map = []
-        for user_id, topic_id in (group.get("topic_user_map", {}) or {}).items():
-            topic_map.append({"user_id": str(user_id), "topic_id": str(topic_id)})
+        topic_target_raw = group.get("topic_target_map", {}) or {}
+        if isinstance(topic_target_raw, dict):
+            for target_id, user_map in topic_target_raw.items():
+                if not isinstance(user_map, dict):
+                    continue
+                for user_id, topic_id in user_map.items():
+                    target_text = str(target_id)
+                    user_text = str(user_id)
+                    topic_map.append(
+                        {
+                            "user_key": f"{target_text}|{user_text}",
+                            "target_chat_id": target_text,
+                            "user_id": user_text,
+                            "topic_id": str(topic_id),
+                        }
+                    )
         if not topic_map:
-            topic_map = [{"user_id": "", "topic_id": ""}]
+            topic_map = [{"user_key": "", "target_chat_id": "", "user_id": "", "topic_id": ""}]
         control_groups.append(
             {
                 "key": str(key),
                 "control_chat_id": group.get("control_chat_id", ""),
                 "is_forum": bool(group.get("is_forum", False)),
                 "topic_routing_enabled": bool(group.get("topic_routing_enabled", False)),
-                "topic_user_map": topic_map,
+                "topic_target_map": topic_map,
             }
         )
     if not control_groups:
@@ -915,7 +1596,9 @@ def blank_control_group() -> dict[str, Any]:
         "control_chat_id": "",
         "is_forum": False,
         "topic_routing_enabled": False,
-        "topic_user_map": [{"user_id": "", "topic_id": ""}],
+        "topic_target_map": [
+            {"user_key": "", "target_chat_id": "", "user_id": "", "topic_id": ""}
+        ],
     }
 
 
@@ -966,13 +1649,41 @@ def _validate_payload(payload: dict[str, Any], raw_existing: dict[str, Any]) -> 
         chat_id = _coerce_int(raw.get("control_chat_id"), f"control_groups[{key}].control_chat_id", errors)
         is_forum = bool(raw.get("is_forum", False))
         topic_enabled = bool(raw.get("topic_routing_enabled", False))
-        topic_map_entries = raw.get("topic_user_map", []) or []
+        topic_map_entries = raw.get("topic_target_map", []) or []
         topic_map = []
         for entry in topic_map_entries:
-            user_id = _coerce_int(entry.get("user_id"), f"control_groups[{key}].topic_user_map.user_id", errors)
-            topic_id = _coerce_int(entry.get("topic_id"), f"control_groups[{key}].topic_user_map.topic_id", errors)
-            if user_id is not None and topic_id is not None:
-                topic_map.append({"user_id": user_id, "topic_id": topic_id})
+            user_key = str(entry.get("user_key", "")).strip()
+            target_chat_id = None
+            user_id = None
+            if user_key:
+                parts = user_key.split("|", 1)
+                if len(parts) == 2:
+                    target_chat_id = _coerce_int(
+                        parts[0], f"control_groups[{key}].topic_target_map.target_chat_id", errors
+                    )
+                    user_id = _coerce_int(
+                        parts[1], f"control_groups[{key}].topic_target_map.user_id", errors
+                    )
+                else:
+                    errors.append(f"control_groups[{key}] topic map user selection is invalid")
+            else:
+                target_chat_id = _coerce_int(
+                    entry.get("target_chat_id"),
+                    f"control_groups[{key}].topic_target_map.target_chat_id",
+                    errors,
+                )
+                user_id = _coerce_int(
+                    entry.get("user_id"),
+                    f"control_groups[{key}].topic_target_map.user_id",
+                    errors,
+                )
+            topic_id = _coerce_int(
+                entry.get("topic_id"), f"control_groups[{key}].topic_target_map.topic_id", errors
+            )
+            if target_chat_id is not None and user_id is not None and topic_id is not None:
+                topic_map.append(
+                    {"target_chat_id": target_chat_id, "user_id": user_id, "topic_id": topic_id}
+                )
         if topic_enabled and not is_forum:
             errors.append(f"control_groups[{key}] topic routing requires forum mode")
         if topic_enabled and not topic_map:
@@ -983,18 +1694,18 @@ def _validate_payload(payload: dict[str, Any], raw_existing: dict[str, Any]) -> 
                 "control_chat_id": chat_id,
                 "is_forum": is_forum,
                 "topic_routing_enabled": topic_enabled,
-                "topic_user_map": topic_map,
+                "topic_target_map": topic_map,
             }
         )
 
     default_control = control_keys[0] if len(control_keys) == 1 else None
 
     targets: list[dict[str, Any]] = []
-    mapped_users: dict[str, set[int]] = {key: set() for key in control_keys}
+    mapped_users: dict[str, dict[int, set[int]]] = {key: {} for key in control_keys}
     for idx, raw in enumerate(targets_raw, start=1):
         name = str(raw.get("name", "")).strip()
         if not name:
-            errors.append(f"targets[{idx}].name is required")
+            name = f"group-{idx}"
         chat_id = _coerce_int(raw.get("target_chat_id"), f"targets[{idx}].target_chat_id", errors)
         interval_raw = str(raw.get("summary_interval_minutes", "")).strip()
         interval = None
@@ -1025,8 +1736,8 @@ def _validate_payload(payload: dict[str, Any], raw_existing: dict[str, Any]) -> 
             alias = str(entry.get("alias", "")).strip()
             if alias:
                 aliases[user_id] = alias
-            if control_group:
-                mapped_users.setdefault(control_group, set()).add(user_id)
+            if control_group and chat_id is not None:
+                mapped_users.setdefault(control_group, {}).setdefault(chat_id, set()).add(user_id)
         targets.append(
             {
                 "name": name,
@@ -1038,16 +1749,32 @@ def _validate_payload(payload: dict[str, Any], raw_existing: dict[str, Any]) -> 
             }
         )
 
+    seen_topics: set[tuple[str, int, int]] = set()
     for group in control_groups:
         if not group["topic_routing_enabled"]:
             continue
-        allowed = mapped_users.get(group["key"], set())
-        unknown = {entry["user_id"] for entry in group["topic_user_map"]} - allowed
-        if unknown:
-            formatted = ", ".join(str(uid) for uid in sorted(unknown))
-            errors.append(
-                f"control_groups[{group['key']}] topic map includes unknown users: {formatted}"
-            )
+        allowed_by_target = mapped_users.get(group["key"], {})
+        for entry in group["topic_target_map"]:
+            target_chat_id = entry["target_chat_id"]
+            user_id = entry["user_id"]
+            key = (group["key"], target_chat_id, user_id)
+            if key in seen_topics:
+                errors.append(
+                    f"control_groups[{group['key']}] has duplicate topic mapping for "
+                    f"{target_chat_id}:{user_id}"
+                )
+            seen_topics.add(key)
+            allowed = allowed_by_target.get(target_chat_id, set())
+            if not allowed:
+                errors.append(
+                    f"control_groups[{group['key']}] topic map references unknown target {target_chat_id}"
+                )
+                continue
+            if user_id not in allowed:
+                errors.append(
+                    f"control_groups[{group['key']}] topic map includes unknown user {user_id} "
+                    f"for target {target_chat_id}"
+                )
 
     reporting = payload.get("reporting", {}) or {}
     storage = payload.get("storage", {}) or {}
@@ -1055,6 +1782,7 @@ def _validate_payload(payload: dict[str, Any], raw_existing: dict[str, Any]) -> 
     notifications = payload.get("notifications", {}) or {}
 
     normalized = {
+        "config_version": 1.0,
         "telegram": {
             "api_id": _coerce_int(api_id_raw, "telegram.api_id", errors) or 0,
             "api_hash": api_hash_raw,
@@ -1117,6 +1845,8 @@ def _coerce_int(value: Any, label: str, errors: list[str]) -> int | None:
 
 def _render_toml(config: dict[str, Any], raw_existing: dict[str, Any]) -> str:
     lines: list[str] = []
+    config_version = config.get("config_version", 1.0)
+    lines.append(f"config_version = {config_version}")
     telegram = config["telegram"]
     api_hash = telegram["api_hash"]
     if api_hash in {"", KEEP_SECRET}:
@@ -1172,12 +1902,19 @@ def _render_toml(config: dict[str, Any], raw_existing: dict[str, Any]) -> str:
                 f"topic_routing_enabled = {toml_bool(group['topic_routing_enabled'])}",
             ]
         )
-        topic_map = group.get("topic_user_map", [])
+        topic_map = group.get("topic_target_map", [])
         if topic_map:
-            lines.append("")
-            lines.append(f"[control_groups.{key}.topic_user_map]")
+            by_target: dict[int, list[dict[str, Any]]] = {}
             for entry in topic_map:
-                lines.append(f"{entry['user_id']} = {entry['topic_id']}")
+                target_id = entry.get("target_chat_id")
+                if target_id is None:
+                    continue
+                by_target.setdefault(int(target_id), []).append(entry)
+            for target_id, entries in by_target.items():
+                lines.append("")
+                lines.append(f"[control_groups.{key}.topic_target_map.{toml_string(str(target_id))}]")
+                for entry in entries:
+                    lines.append(f"{entry['user_id']} = {entry['topic_id']}")
 
     storage = config["storage"]
     reporting = config["reporting"]

@@ -38,7 +38,7 @@ def build_config(tmp_path: Path) -> Config:
         control_chat_id=-456,
         is_forum=False,
         topic_routing_enabled=False,
-        topic_user_map=MappingProxyType({}),
+        topic_target_map=MappingProxyType({}),
     )
     storage = StorageConfig(db_path=tmp_path / "db.sqlite3", media_dir=tmp_path / "media")
     reporting = ReportingConfig(
@@ -50,6 +50,7 @@ def build_config(tmp_path: Path) -> Config:
     display = DisplayConfig(show_ids=True, time_format="%Y.%m.%d %H:%M:%S (%Z)")
     notifications = NotificationConfig(bark_key=None)
     return Config(
+        config_version=1.0,
         telegram=telegram,
         sender=None,
         targets=(target,),
@@ -86,7 +87,7 @@ def test_topic_reply_id_for_message_respects_control_group():
         control_chat_id=-456,
         is_forum=True,
         topic_routing_enabled=True,
-        topic_user_map=MappingProxyType({111: 9001}),
+        topic_target_map=MappingProxyType({-123: MappingProxyType({111: 9001})}),
     )
     message = DbMessage(
         chat_id=-123,
@@ -100,16 +101,29 @@ def test_topic_reply_id_for_message_respects_control_group():
         replied_text=None,
         media=[],
     )
-    assert runner._topic_reply_id_for_message(control, message) == 9001
+    assert runner._topic_reply_id_for_message(control, -123, message) == 9001
 
     control_no_map = ControlGroupConfig(
         key="alt",
         control_chat_id=-457,
         is_forum=True,
         topic_routing_enabled=True,
-        topic_user_map=MappingProxyType({}),
+        topic_target_map=MappingProxyType({}),
     )
-    assert runner._topic_reply_id_for_message(control_no_map, message) is None
+    assert runner._topic_reply_id_for_message(control_no_map, -123, message) is None
+
+
+def test_resolve_once_targets_by_name_and_id(tmp_path: Path):
+    config = build_config(tmp_path)
+    assert runner._resolve_once_targets(config, "default")[0].target_chat_id == -123
+    assert runner._resolve_once_targets(config, "-123")[0].name == "default"
+    assert runner._resolve_once_targets(config, None)[0].name == "default"
+
+
+def test_resolve_once_targets_invalid(tmp_path: Path):
+    config = build_config(tmp_path)
+    with pytest.raises(ValueError):
+        runner._resolve_once_targets(config, "missing")
 
 
 @pytest.mark.asyncio

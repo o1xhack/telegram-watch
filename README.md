@@ -92,6 +92,8 @@ Once installed and your environment is active, the rest is the same for everyone
    cp config.example.toml config.toml
    ```
 
+   One-click option: double-click `launch_tgwatch.command` (macOS) or `launch_tgwatch.bat` (Windows). It will create `.venv`, install dependencies, copy `config.toml` if missing, and open the GUI.
+
    Tip: launch the local GUI to edit config without touching the file:
 
    ```bash
@@ -108,17 +110,18 @@ Once installed and your environment is active, the rest is the same for everyone
 
 3. If you choose to edit the file manually, fill:
 
+   - `config_version` (must be `1.0`)
    - `telegram.api_id` / `telegram.api_hash`
    - `telegram.session_file` (defaults to `data/tgwatch.session`)
    - `[sender] session_file` (optional second-account session used to send control messages so the primary account can receive notifications)
-   - `targets[].name` (a label for each target group)
+   - `targets[].name` (optional label for each target group; if omitted tgwatch labels them `group-1`, `group-2`, etc)
    - `targets[].target_chat_id` (the group/channel ID)
    - `targets[].tracked_user_ids` (list of numeric user IDs to monitor)
    - `targets[].summary_interval_minutes` (optional per-target report interval)
    - `targets[].control_group` (optional; required when multiple control groups are configured)
    - `[targets.tracked_user_aliases]` (optional ID→alias mapping for nicer reports)
    - `control_groups.<name>.control_chat_id` (where digests + commands live)
-   - `control_groups.<name>.is_forum` / `control_groups.<name>.topic_routing_enabled` / `[control_groups.<name>.topic_user_map]` (optional per-user routing to Telegram Topics)
+   - `control_groups.<name>.is_forum` / `control_groups.<name>.topic_routing_enabled` / `[control_groups.<name>.topic_target_map.<target_chat_id>]` (optional per-user routing to Telegram Topics)
    - `storage.db_path` & `storage.media_dir`
    - `reporting.reports_dir` & `reporting.summary_interval_minutes` (default report interval if a target does not override it)
    - `reporting.timezone` (optional, e.g., `Asia/Shanghai`, `America/Los_Angeles`, `America/New_York`, `Asia/Tokyo`)
@@ -127,6 +130,25 @@ Once installed and your environment is active, the rest is the same for everyone
    - `[display] show_ids` (default `true`) & `time_format` (strftime string) control how control-chat pushes render names/timestamps
 
 Single-group configs using `[target]` + `[control]` are still supported for backwards compatibility.
+
+### Run once for a single target
+
+`tgwatch once` defaults to all targets. To run it for a single group, pass a target name or `target_chat_id`:
+
+```bash
+tgwatch once --config config.toml --since 2h --target group-1
+tgwatch once --config config.toml --since 2h --target -1001234567890
+```
+
+### Migration
+
+If you upgrade from an older config (missing `config_version`), tgwatch will stop and prompt you to migrate.
+
+1. The GUI shows a locked banner with a **Migrate Config** button.
+2. CLI `run`/`once` show a red error and ask whether to migrate.
+3. Migration renames `config.toml` to `config-old-0.1.toml` and creates a new `config.toml` with best-effort values.
+
+Review the new `config.toml` before running again. Backup files like `config-old-0.1.toml` are ignored by git.
 
 ### Bark key quick guide
 
@@ -164,6 +186,8 @@ Launch the local UI (default: `http://127.0.0.1:8765`) to manage targets/control
 ```bash
 tgwatch gui
 ```
+
+The GUI also provides **Run once** and **Run daemon** buttons with a live log panel. `Run daemon` starts a background process, so closing the browser will not stop it; re-open the GUI to reattach logs. If no session file exists yet, run `python -m tgwatch run --config config.toml` once in a terminal to complete login before using the GUI runner.
 
 ### Once (batch report)
 

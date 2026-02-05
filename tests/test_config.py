@@ -6,10 +6,65 @@ import pytest
 from telegram_watch.config import ConfigError, load_config
 
 
-def write_config(tmp_path: Path, body: str) -> Path:
+def write_config(tmp_path: Path, body: str, *, include_version: bool = True) -> Path:
     cfg_path = tmp_path / "config.toml"
-    cfg_path.write_text(dedent(body), encoding="utf-8")
+    content = dedent(body).lstrip()
+    if include_version and "config_version" not in content:
+        content = f"config_version = 1.0\n\n{content}"
+    cfg_path.write_text(content, encoding="utf-8")
     return cfg_path
+
+
+def test_missing_config_version_raises(tmp_path):
+    cfg_path = write_config(
+        tmp_path,
+        """
+        [telegram]
+        api_id = 42
+        api_hash = "abcdefghijk"
+
+        [target]
+        target_chat_id = -1001
+        tracked_user_ids = [123]
+
+        [control]
+        control_chat_id = -1002
+
+        [storage]
+        db_path = "data/app.sqlite3"
+        media_dir = "data/media"
+        """,
+        include_version=False,
+    )
+    with pytest.raises(ConfigError):
+        load_config(cfg_path)
+
+
+def test_invalid_config_version_raises(tmp_path):
+    cfg_path = write_config(
+        tmp_path,
+        """
+        config_version = 0.9
+
+        [telegram]
+        api_id = 42
+        api_hash = "abcdefghijk"
+
+        [target]
+        target_chat_id = -1001
+        tracked_user_ids = [123]
+
+        [control]
+        control_chat_id = -1002
+
+        [storage]
+        db_path = "data/app.sqlite3"
+        media_dir = "data/media"
+        """,
+        include_version=False,
+    )
+    with pytest.raises(ConfigError):
+        load_config(cfg_path)
 
 
 def test_load_config_resolves_relative_paths(tmp_path):
@@ -175,7 +230,7 @@ def test_topic_routing_parses_when_enabled(tmp_path):
         is_forum = true
         topic_routing_enabled = true
 
-        [control.topic_user_map]
+        [control.topic_target_map."-1001"]
         123 = 9001
         456 = 9002
 
@@ -188,7 +243,7 @@ def test_topic_routing_parses_when_enabled(tmp_path):
     control = config.control_groups["default"]
     assert control.is_forum is True
     assert control.topic_routing_enabled is True
-    assert control.topic_user_map[123] == 9001
+    assert control.topic_target_map[-1001][123] == 9001
 
 
 def test_topic_routing_requires_forum_flag(tmp_path):
@@ -208,7 +263,7 @@ def test_topic_routing_requires_forum_flag(tmp_path):
         is_forum = false
         topic_routing_enabled = true
 
-        [control.topic_user_map]
+        [control.topic_target_map."-1001"]
         123 = 9001
 
         [storage]
@@ -237,7 +292,7 @@ def test_topic_routing_rejects_unknown_users(tmp_path):
         is_forum = true
         topic_routing_enabled = true
 
-        [control.topic_user_map]
+        [control.topic_target_map."-1001"]
         999 = 9001
 
         [storage]
@@ -359,7 +414,7 @@ def test_topic_map_scoped_to_control_group(tmp_path):
         is_forum = true
         topic_routing_enabled = true
 
-        [control_groups.main.topic_user_map]
+        [control_groups.main.topic_target_map."-1002"]
         456 = 9001
 
         [control_groups.alt]
@@ -466,7 +521,7 @@ def test_forum_topic_map_valid_per_control_group(tmp_path):
         is_forum = true
         topic_routing_enabled = true
 
-        [control_groups.main.topic_user_map]
+        [control_groups.main.topic_target_map."-1001"]
         123 = 9001
 
         [control_groups.alt]
@@ -474,7 +529,7 @@ def test_forum_topic_map_valid_per_control_group(tmp_path):
         is_forum = true
         topic_routing_enabled = true
 
-        [control_groups.alt.topic_user_map]
+        [control_groups.alt.topic_target_map."-1002"]
         456 = 9002
 
         [storage]
@@ -483,8 +538,8 @@ def test_forum_topic_map_valid_per_control_group(tmp_path):
         """,
     )
     config = load_config(cfg_path)
-    assert config.control_groups["main"].topic_user_map[123] == 9001
-    assert config.control_groups["alt"].topic_user_map[456] == 9002
+    assert config.control_groups["main"].topic_target_map[-1001][123] == 9001
+    assert config.control_groups["alt"].topic_target_map[-1002][456] == 9002
 
 
 def test_target_aliases_are_scoped(tmp_path):
@@ -642,6 +697,35 @@ def test_duplicate_target_name_rejected(tmp_path):
     )
     with pytest.raises(ConfigError):
         load_config(cfg_path)
+
+
+def test_missing_target_name_defaults(tmp_path):
+    cfg_path = write_config(
+        tmp_path,
+        """
+        [telegram]
+        api_id = 42
+        api_hash = "abcdefghijk"
+
+        [[targets]]
+        target_chat_id = -1001
+        tracked_user_ids = [123]
+
+        [[targets]]
+        target_chat_id = -1002
+        tracked_user_ids = [456]
+
+        [control_groups.main]
+        control_chat_id = -1003
+
+        [storage]
+        db_path = "data/app.sqlite3"
+        media_dir = "data/media"
+        """,
+    )
+    config = load_config(cfg_path)
+    assert config.targets[0].name == "group-1"
+    assert config.targets[1].name == "group-2"
 
 
 def test_duplicate_control_chat_id_rejected(tmp_path):

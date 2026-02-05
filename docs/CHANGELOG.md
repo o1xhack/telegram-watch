@@ -4,9 +4,14 @@
 
 > Entries are arranged from newest to oldest so the latest release notes stay at the top. Each bullet references the requirement(s) that introduced the change.
 
-## 0.5.0 — 2026-02-03
-- Added multi-target monitoring with per-target report intervals and configurable control-group routing (REQ-20260202-001-multi-admin-monitoring).
-- Added a local GUI for configuring multi-group monitoring, control-group routing, and limits (REQ-20260203-001-config-gui-design).
+## 1.0.0 — 2026-02-04
+- Shipped multi-target monitoring with control-group routing and a local GUI, including improved control-group mapping UX (REQ-20260202-001-multi-admin-monitoring, REQ-20260203-001-config-gui-design, REQ-20260204-003-gui-control-mapping-ux).
+- Added one-click launchers and GUI runner controls (run/once, background logs, Stop GUI), plus fixed a GUI startup crash (REQ-20260203-002-gui-launcher-and-runner, REQ-20260204-001-gui-launcher-loglevel-fix, REQ-20260204-002-gui-stop-button).
+- Enforced config version 1.0 with per-target topic mapping (target_chat_id + user_id) and an in-app migration flow (REQ-20260204-004-topic-mapping-per-target, REQ-20260204-006-config-migration-flow).
+- Audited tests and refreshed docs for config migration and target naming defaults (REQ-20260205-001-audit-tests-docs).
+- Simplified migration to only keep `config-old-0.1.toml` backups (REQ-20260205-002-drop-config-sample).
+- Added single-target filtering for run-once in CLI and GUI (REQ-20260205-003-once-target-filter).
+- Ignored `config-old-*.toml` migration backups in git (REQ-20260205-004-ignore-old-configs).
 
 ## 0.3.0 — 2026-01-29
 - Added dual-account bridging so a sender account can post control-group updates and restore notifications for the primary account (REQ-20260129-002-bridge-implementation).

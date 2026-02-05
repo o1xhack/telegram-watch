@@ -10,6 +10,12 @@
 cp config.example.toml config.toml
 ```
 
+One-click option: double-click `launch_tgwatch.command` (macOS) or `launch_tgwatch.bat` (Windows). It creates `.venv`, installs dependencies, copies `config.toml` if missing, and opens the GUI.
+
+Make sure `config_version = 1.0` is present at the top of the file. Older versions will be rejected.
+
+If you upgrade from an older config (missing `config_version`), tgwatch will stop and prompt you to migrate. Migration backs up `config.toml` to `config-old-0.1.toml` and generates a new `config.toml` with best-effort values. Review the new file before running. Backup files are ignored by git.
+
 All fields must be edited before the watcher can log in.
 
 Recommended: launch the local GUI (default `http://127.0.0.1:8765`) to edit config without touching the file:
@@ -17,6 +23,9 @@ Recommended: launch the local GUI (default `http://127.0.0.1:8765`) to edit conf
 ```bash
 tgwatch gui
 ```
+
+The GUI includes **Run once** / **Run daemon** buttons with live logs. If the session file does not exist yet, run `python -m tgwatch run --config config.toml` once in a terminal to complete login first.
+You can also limit **Run once** to a single target by selecting it in the GUI or by passing `--target` (name or `target_chat_id`) on the CLI.
 
 ## 2. Telegram credentials (`[telegram]`)
 
@@ -44,7 +53,7 @@ Each `[[targets]]` entry describes one Telegram group/channel you want to monito
 
 Field | What it represents | How to find it
 ----- | ------------------ | -------------
-`name` | A unique label for this target group. | Any short string (used in logs/commands).
+`name` | Optional label for this target group. | Used in logs/GUI; if omitted, tgwatch labels it `group-1`, `group-2`, etc.
 `target_chat_id` | Numeric ID of the group/channel you want to monitor. Supergroups/channels start with `-100`. | In Telegram Desktop/Mobile open the chat → tap the title → copy the invite link → send it to `@userinfobot`, `@getidsbot`, or `@RawDataBot` and it will reply with `chat_id = -100...`. For private chats with no shareable link, see “Private group without invite link” below.
 `tracked_user_ids` | List of integer user IDs to watch inside the target chat. | Ask each target user to send a message to `@userinfobot` and forward you the ID, or invite `@userinfobot` to the chat and reply `/whois @username`. Replace the sample list (`[11111111, 22222222]`) with the actual integers.
 `summary_interval_minutes` | Optional per-target report interval. | If omitted, falls back to `reporting.summary_interval_minutes`.
@@ -55,6 +64,7 @@ Tips:
 - Always keep the IDs numeric; quoted usernames will not work.
 - Include only the users you care about; everything else is ignored.
 - For supergroups, keep the `-100` prefix so `MSG` links jump back to Telegram.
+- If you omit `name`, tgwatch labels the targets as `group-1`, `group-2`, etc. based on order.
 
 ### Optional aliases
 
@@ -101,13 +111,13 @@ Field | Description | Recommendation
 `control_chat_id` | Where tgwatch posts summaries and where you send commands. | Use your personal “Saved Messages” dialog or a private group that only you control. Retrieve the numeric ID the same way as the target chat (bots like `@userinfobot` show `chat_id` in replies). Make sure your own Telegram account is a member so commands are accepted.
 `is_forum` | Set `true` if the control chat has Topics (forum mode) enabled. | Keep `false` for normal groups or “Saved Messages”.
 `topic_routing_enabled` | Enable per-user routing into forum topics. | Leave `false` unless you want per-user topics.
-`topic_user_map` | Map tracked user IDs to forum topic IDs. | Provide only when `topic_routing_enabled = true`.
+`topic_target_map` | Map tracked user IDs to forum topic IDs per target chat. | Provide only when `topic_routing_enabled = true`.
 
 If only one control group is configured, `targets[].control_group` can be omitted (all targets route to the single control group). If multiple control groups exist, every target must declare `control_group`.
 
 ### Topic routing (forum groups)
 
-When `is_forum = true` and `topic_routing_enabled = true`, tgwatch sends each tracked user’s messages into the configured forum topic for that user. If a user is not listed in `topic_user_map`, their messages fall back to the General topic.
+When `is_forum = true` and `topic_routing_enabled = true`, tgwatch sends each tracked user’s messages into the configured forum topic for that user within each target chat. If a user is not listed in the target’s `topic_target_map`, their messages fall back to the General topic.
 When topic routing is enabled, HTML reports are also split per user and sent to the matching topic before the message stream.
 
 Example:
@@ -118,7 +128,7 @@ control_chat_id = -1009876543210
 is_forum = true
 topic_routing_enabled = true
 
-[control_groups.main.topic_user_map]
+[control_groups.main.topic_target_map."-1001234567890"]
 11111111 = 9001  # Alice -> Topic A
 22222222 = 9002  # Bob -> Topic B
 ```
@@ -134,7 +144,7 @@ Topic IDs are the message IDs of the service message that created the topic. The
 
 The General topic always uses ID `1`. When topic routing is disabled, tgwatch posts to General by default.
 
-If you only want the General topic, you can omit `topic_user_map` and keep `topic_routing_enabled = false`.
+If you only want the General topic, you can omit `topic_target_map` and keep `topic_routing_enabled = false`.
 
 ## 6. Local storage (`[storage]`)
 

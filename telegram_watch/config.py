@@ -22,6 +22,7 @@ DEFAULT_TIME_FORMAT = "%Y.%m.%d %H:%M:%S (%Z)"
 MAX_TARGET_GROUPS = 5
 MAX_USERS_PER_TARGET = 5
 MAX_CONTROL_GROUPS = 5
+CONFIG_VERSION = 1.0
 
 
 @dataclass(frozen=True)
@@ -52,7 +53,7 @@ class ControlGroupConfig:
     control_chat_id: int
     is_forum: bool
     topic_routing_enabled: bool
-    topic_user_map: Mapping[int, int]
+    topic_target_map: Mapping[int, Mapping[int, int]]
 
 
 @dataclass(frozen=True)
@@ -82,6 +83,7 @@ class NotificationConfig:
 
 @dataclass(frozen=True)
 class Config:
+    config_version: float
     telegram: TelegramConfig
     sender: SenderConfig | None
     targets: tuple[TargetGroupConfig, ...]
@@ -176,10 +178,17 @@ def load_config(path: Path) -> Config:
     """Load and validate a config TOML file."""
     if not path.exists():
         raise ConfigError(f"config file not found: {path}")
-    with path.open("rb") as fh:
-        data = tomllib.load(fh)
+    try:
+        with path.open("rb") as fh:
+            data = tomllib.load(fh)
+    except Exception as exc:
+        raise ConfigError(
+            "config file is invalid TOML. Rewrite config.toml using config.example.toml "
+            "and see docs/configuration.md."
+        ) from exc
     base_dir = path.parent.resolve()
 
+    config_version = _parse_config_version(data)
     telegram_cfg = _parse_telegram(data.get("telegram") or {}, base_dir)
     sender_cfg = _parse_sender(data.get("sender"), base_dir, telegram_cfg)
     reporting_cfg = _parse_reporting(data.get("reporting") or {}, base_dir)
@@ -214,6 +223,7 @@ def load_config(path: Path) -> Config:
         targets_by_control.setdefault(target.control_group, []).append(target)
 
     return Config(
+        config_version=config_version,
         telegram=telegram_cfg,
         sender=sender_cfg,
         targets=tuple(targets),
@@ -229,6 +239,25 @@ def load_config(path: Path) -> Config:
         display=display_cfg,
         notifications=notifications_cfg,
     )
+
+
+def _parse_config_version(data: dict[str, Any]) -> float:
+    raw = data.get("config_version")
+    if raw is None:
+        raise ConfigError(
+            "config_version is missing. This config is outdated; "
+            "rewrite config.toml using config.example.toml and see docs/configuration.md."
+        )
+    try:
+        version = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ConfigError("config_version must be 1.0") from exc
+    if version != CONFIG_VERSION:
+        raise ConfigError(
+            f"config_version {version} is not supported. "
+            "Rewrite config.toml using config.example.toml and see docs/configuration.md."
+        )
+    return version
 
 
 def _parse_telegram(raw: dict[str, Any], base_dir: Path) -> TelegramConfig:
@@ -275,7 +304,15 @@ def _parse_targets(
             if not isinstance(raw, dict):
                 raise ConfigError("Each entry in targets must be a table")
             label = f"targets[{idx}]"
-            targets.append(_parse_target_group(raw, reporting_cfg, label, require_name=True))
+            targets.append(
+                _parse_target_group(
+                    raw,
+                    reporting_cfg,
+                    label,
+                    require_name=False,
+                    default_name=f"group-{idx}",
+                )
+            )
         if len(targets) > MAX_TARGET_GROUPS:
             raise ConfigError(f"targets cannot exceed {MAX_TARGET_GROUPS} groups")
         return targets
@@ -395,32 +432,52 @@ def _parse_control_group(
     control_chat_id = _require_int(raw["control_chat_id"], f"{label}.control_chat_id")
     is_forum = _parse_bool(raw.get("is_forum", False))
     topic_routing_enabled = _parse_bool(raw.get("topic_routing_enabled", False))
-    topic_map_raw = raw.get("topic_user_map", {})
+    if "topic_user_map" in raw:
+        raise ConfigError(
+            f"{label}.topic_user_map is no longer supported. "
+            "Rewrite config.toml using config.example.toml."
+        )
+    topic_map_raw = raw.get("topic_target_map", {})
     if topic_map_raw and not isinstance(topic_map_raw, dict):
-        raise ConfigError(f"{label}.topic_user_map must be a table of user_id = topic_id entries")
-    topic_map: dict[int, int] = {}
-    for key, value in topic_map_raw.items():
+        raise ConfigError(f"{label}.topic_target_map must be a table of target_chat_id tables")
+    topic_target_map: dict[int, Mapping[int, int]] = {}
+    for target_key, user_map_raw in (topic_map_raw or {}).items():
         try:
-            user_id = int(key)
+            target_chat_id = int(target_key)
         except (TypeError, ValueError) as exc:
-            raise ConfigError(f"{label}.topic_user_map keys must be integers") from exc
-        try:
-            topic_id = int(value)
-        except (TypeError, ValueError) as exc:
-            raise ConfigError(f"{label}.topic_user_map values must be integers") from exc
-        if topic_id <= 0:
-            raise ConfigError(f"{label}.topic_user_map values must be positive integers")
-        topic_map[user_id] = topic_id
+            raise ConfigError(f"{label}.topic_target_map keys must be integers") from exc
+        if not isinstance(user_map_raw, dict):
+            raise ConfigError(f"{label}.topic_target_map.{target_chat_id} must be a table")
+        user_map: dict[int, int] = {}
+        for user_key, value in user_map_raw.items():
+            try:
+                user_id = int(user_key)
+            except (TypeError, ValueError) as exc:
+                raise ConfigError(
+                    f"{label}.topic_target_map.{target_chat_id} keys must be integers"
+                ) from exc
+            try:
+                topic_id = int(value)
+            except (TypeError, ValueError) as exc:
+                raise ConfigError(
+                    f"{label}.topic_target_map.{target_chat_id} values must be integers"
+                ) from exc
+            if topic_id <= 0:
+                raise ConfigError(
+                    f"{label}.topic_target_map.{target_chat_id} values must be positive integers"
+                )
+            user_map[user_id] = topic_id
+        topic_target_map[target_chat_id] = MappingProxyType(user_map)
     if topic_routing_enabled and not is_forum:
         raise ConfigError(f"{label}.topic_routing_enabled requires {label}.is_forum = true")
-    if topic_routing_enabled and not topic_map:
-        raise ConfigError(f"{label}.topic_routing_enabled requires {label}.topic_user_map to be set")
+    if topic_routing_enabled and not topic_target_map:
+        raise ConfigError(f"{label}.topic_routing_enabled requires {label}.topic_target_map to be set")
     return ControlGroupConfig(
         key=key,
         control_chat_id=control_chat_id,
         is_forum=is_forum,
         topic_routing_enabled=topic_routing_enabled,
-        topic_user_map=MappingProxyType(topic_map),
+        topic_target_map=MappingProxyType(topic_target_map),
     )
 
 
@@ -461,20 +518,29 @@ def _validate_control_topic_maps(
     targets: Iterable[TargetGroupConfig],
     control_groups: Mapping[str, ControlGroupConfig],
 ) -> None:
-    allowed: dict[str, set[int]] = {key: set() for key in control_groups}
+    allowed: dict[str, dict[int, set[int]]] = {key: {} for key in control_groups}
     for target in targets:
         if target.control_group:
-            allowed[target.control_group].update(target.tracked_user_ids)
+            allowed.setdefault(target.control_group, {}).setdefault(
+                target.target_chat_id, set()
+            ).update(target.tracked_user_ids)
     for key, control in control_groups.items():
-        topic_keys = set(control.topic_user_map)
-        if not topic_keys:
+        if not control.topic_target_map:
             continue
-        unknown = topic_keys - allowed.get(key, set())
-        if unknown:
-            formatted = ", ".join(str(uid) for uid in sorted(unknown))
-            raise ConfigError(
-                f"Topic routing configured for unknown tracked user(s) in control group '{key}': {formatted}"
-            )
+        for target_chat_id, user_map in control.topic_target_map.items():
+            allowed_users = allowed.get(key, {}).get(target_chat_id, set())
+            if not allowed_users:
+                raise ConfigError(
+                    f"Topic routing configured for unknown target_chat_id {target_chat_id} "
+                    f"in control group '{key}'."
+                )
+            unknown = set(user_map.keys()) - allowed_users
+            if unknown:
+                formatted = ", ".join(str(uid) for uid in sorted(unknown))
+                raise ConfigError(
+                    f"Topic routing configured for unknown tracked user(s) in control group "
+                    f"'{key}' for target {target_chat_id}: {formatted}"
+                )
 
 
 def _parse_storage(raw: dict[str, Any], base_dir: Path) -> StorageConfig:

@@ -10,6 +10,12 @@
 cp config.example.toml config.toml
 ```
 
+一键方式：双击 `launch_tgwatch.command`（macOS）或 `launch_tgwatch.bat`（Windows），会创建 `.venv`、安装依赖、如缺失则复制 `config.toml`，并打开 GUI。
+
+请确保文件顶部包含 `config_version = 1.0`，旧版本将被拒绝运行。
+
+如果你是从旧配置升级（缺少 `config_version`），tgwatch 会停止并提示迁移。迁移会将 `config.toml` 备份为 `config-old-0.1.toml`，并创建新的 `config.toml`（尽量迁移旧值）。请在运行前检查新文件。备份文件已被 git 忽略。
+
 在首次登录前必须编辑所有字段。
 
 推荐：启动本地 GUI（默认 `http://127.0.0.1:8765`）进行配置：
@@ -17,6 +23,9 @@ cp config.example.toml config.toml
 ```bash
 tgwatch gui
 ```
+
+GUI 提供 **Run once** / **Run daemon** 按钮与运行日志。若 session 文件尚未生成，请先在终端运行一次 `python -m tgwatch run --config config.toml` 完成登录。
+你也可以在 GUI 中选择单个目标群，或在 CLI 上使用 `--target`（名称或 `target_chat_id`）来限制 **Run once** 的执行范围。
 
 ## 2. Telegram 凭据（`[telegram]`）
 
@@ -44,7 +53,7 @@ tgwatch gui
 
 字段 | 含义 | 获取方式
 ----- | ---- | ----
-`name` | 目标群的名称/标签 | 任意短字符串（用于日志/命令）
+`name` | 目标群的可选标签 | 用于日志/GUI；不填写时会自动标为 `group-1`、`group-2` 等
 `target_chat_id` | 目标群/频道的数字 ID，超级群/频道以 `-100` 开头。 | 在 Telegram Desktop/手机中打开群 → 点击标题 → 复制邀请链接 → 发送给 `@userinfobot`/`@getidsbot`/`@RawDataBot`，机器人会返回 `chat_id = -100...`。若无法分享链接，见下方“私有群无邀请链接”。
 `tracked_user_ids` | 需要监控的用户 ID 列表。 | 让目标用户给 `@userinfobot` 发送消息并把 ID 转发给你，或把 `@userinfobot` 拉进群后 `/whois @username`。用真实 ID 替换示例列表（`[11111111, 22222222]`）。
 `summary_interval_minutes` | 可选：该目标群的报告频率 | 未填写则使用 `reporting.summary_interval_minutes`
@@ -55,6 +64,7 @@ tgwatch gui
 - ID 必须是数字，用户名不生效。
 - 只填写需要追踪的人，其它成员会被忽略。
 - 超级群务必保留 `-100` 前缀，才能让报告里的 `MSG` 链接正确跳回 Telegram。
+- 不填写 `name` 时，tgwatch 会按顺序显示为 `group-1`、`group-2` 等。
 
 ### 可选别名
 
@@ -98,13 +108,13 @@ tracked_user_ids = [11111111, 22222222]
 `control_chat_id` | 控制群位置，用于接收摘要和执行命令。 | 建议使用“Saved Messages”或仅你可控的小群，并确保你的账号在群内。
 `is_forum` | 控制群是否开启 Topics（论坛模式）。 | 普通群或“Saved Messages”保持 `false`。
 `topic_routing_enabled` | 启用按用户路由到 Topics。 | 不需要时保持 `false`。
-`topic_user_map` | 追踪用户 ID → Topic ID 映射。 | 仅在 `topic_routing_enabled = true` 时填写。
+`topic_target_map` | 追踪用户 ID → Topic ID 映射（按目标群 chat_id 区分）。 | 仅在 `topic_routing_enabled = true` 时填写。
 
 若只有一个控制群，`targets[].control_group` 可省略；若存在多个控制群，则每个目标群都必须指定 `control_group`。
 
 ### Topic 路由（论坛群）
 
-当 `is_forum = true` 且 `topic_routing_enabled = true` 时，tgwatch 会将每个追踪用户的消息推送到对应的 Topic。未映射用户回退到 General 主题。
+当 `is_forum = true` 且 `topic_routing_enabled = true` 时，tgwatch 会将每个追踪用户在对应目标群中的消息推送到 Topic。未在该目标群的 `topic_target_map` 中映射的用户会回退到 General 主题。
 启用 Topic 路由时，HTML 报告也会按用户拆分，并在消息流之前发送到对应 Topic。
 
 示例：
@@ -115,7 +125,7 @@ control_chat_id = -1009876543210
 is_forum = true
 topic_routing_enabled = true
 
-[control_groups.main.topic_user_map]
+[control_groups.main.topic_target_map."-1001234567890"]
 11111111 = 9001  # Alice -> Topic A
 22222222 = 9002  # Bob -> Topic B
 ```

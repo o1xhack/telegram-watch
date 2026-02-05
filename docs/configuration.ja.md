@@ -10,6 +10,12 @@
 cp config.example.toml config.toml
 ```
 
+ワンクリックで始める場合は `launch_tgwatch.command`（macOS）または `launch_tgwatch.bat`（Windows）をダブルクリックしてください。.venv を作成し、依存をインストールし、`config.toml` が無ければコピーして GUI を開きます。
+
+ファイルの先頭に `config_version = 1.0` があることを確認してください。旧バージョンは拒否されます。
+
+古い設定（`config_version` なし）から更新する場合、tgwatch は停止して移行を促します。移行では `config.toml` を `config-old-0.1.toml` としてバックアップし、可能な範囲で値を引き継いだ新しい `config.toml` を作成します。実行前に新しいファイルを確認してください。バックアップは git で無視されます。
+
 初回ログイン前に全項目を編集してください。
 
 推奨：ローカル GUI（既定 `http://127.0.0.1:8765`）で編集します。
@@ -17,6 +23,9 @@ cp config.example.toml config.toml
 ```bash
 tgwatch gui
 ```
+
+GUI には **Run once** / **Run daemon** ボタンとログ表示があります。session ファイルが未作成の場合は、先に `python -m tgwatch run --config config.toml` をターミナルで一度実行してログインを完了してください。
+GUI で単一ターゲットを選択するか、CLI の `--target`（名前または `target_chat_id`）で **Run once** を対象限定できます。
 
 ## 2. Telegram 認証情報（`[telegram]`）
 
@@ -44,7 +53,7 @@ tgwatch gui
 
 項目 | 意味 | 取得方法
 ----- | ---- | ----
-`name` | ターゲット名/ラベル | 任意の短い文字列（ログ/コマンドで使用）
+`name` | ターゲットの任意ラベル | ログ/GUIで使用。未設定なら `group-1`、`group-2` などに自動命名
 `target_chat_id` | 監視対象グループ/チャンネルの数値 ID。スーパーグループ/チャンネルは `-100` で始まる。 | Telegram Desktop/モバイルでチャットを開く → タイトル → 招待リンクをコピー → `@userinfobot`/`@getidsbot`/`@RawDataBot` に送ると `chat_id = -100...` が返ります。招待リンクがない場合は下記参照。
 `tracked_user_ids` | 追跡するユーザー ID の配列。 | 各ユーザーに `@userinfobot` へ送信してもらうか、`@userinfobot` をグループに追加して `/whois @username`。例の `[11111111, 22222222]` を実 ID に置き換え。
 `summary_interval_minutes` | 任意：ターゲットごとのレポート間隔 | 未設定なら `reporting.summary_interval_minutes`
@@ -55,6 +64,7 @@ tgwatch gui
 - ID は数値のみ。ユーザー名は不可。
 - 追跡対象のみ入力（他ユーザーは無視）。
 - スーパーグループは `-100` プレフィックスを保持（`MSG` リンクが正しく動作）。
+- `name` を省略すると `group-1`、`group-2` のように順番で表示されます。
 
 ### エイリアス（任意）
 
@@ -98,13 +108,13 @@ tracked_user_ids = [11111111, 22222222]
 `control_chat_id` | レポート/コマンドの送信先。 | “Saved Messages” か自分だけのグループを推奨。
 `is_forum` | コントロールチャットが Topics（フォーラム）を有効にしているか。 | 通常グループや “Saved Messages” は `false`。
 `topic_routing_enabled` | ユーザーごとの Topic ルーティングを有効化。 | 不要なら `false`。
-`topic_user_map` | ユーザー ID → Topic ID の対応表。 | `topic_routing_enabled = true` の場合のみ。
+`topic_target_map` | ユーザー ID → Topic ID の対応表（target_chat_id ごと）。 | `topic_routing_enabled = true` の場合のみ。
 
 control group が 1 つだけなら `targets[].control_group` は省略可能です。複数ある場合は各ターゲットで必ず指定してください。
 
 ### Topic ルーティング（フォーラムグループ）
 
-`is_forum = true` かつ `topic_routing_enabled = true` の場合、tgwatch はユーザーごとに対応する Topic へ送信します。未設定ユーザーは General に送られます。
+`is_forum = true` かつ `topic_routing_enabled = true` の場合、tgwatch はターゲットチャットごとに対応する Topic へ送信します。該当ターゲットの `topic_target_map` にないユーザーは General に送られます。
 Topic ルーティング有効時は、HTML レポートもユーザーごとに分割され、メッセージ送信前に対応 Topic へ送られます。
 
 例：
@@ -115,7 +125,7 @@ control_chat_id = -1009876543210
 is_forum = true
 topic_routing_enabled = true
 
-[control_groups.main.topic_user_map]
+[control_groups.main.topic_target_map."-1001234567890"]
 11111111 = 9001  # Alice -> Topic A
 22222222 = 9002  # Bob -> Topic B
 ```

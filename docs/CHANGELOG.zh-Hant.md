@@ -4,9 +4,14 @@
 
 > 條目按時間由新到舊排列，最新版本在最上方。每條變更都會標註對應的需求編號。
 
-## 0.5.0 — 2026-02-03
-- 支援多目標監控，可依目標群設定報告間隔，並配置控制群路由（REQ-20260202-001-multi-admin-monitoring）。
-- 新增本機 GUI，用於設定多群組監控、控制群路由與上限（REQ-20260203-001-config-gui-design）。
+## 1.0.0 — 2026-02-04
+- 交付多目標監控與控制群路由，並提供本機 GUI 與控制群映射體驗優化（REQ-20260202-001-multi-admin-monitoring，REQ-20260203-001-config-gui-design，REQ-20260204-003-gui-control-mapping-ux）。
+- 新增一鍵啟動腳本與 GUI 執行控制（run/once、背景日誌、Stop GUI），並修復 GUI 啟動崩潰（REQ-20260203-002-gui-launcher-and-runner，REQ-20260204-001-gui-launcher-loglevel-fix，REQ-20260204-002-gui-stop-button）。
+- 強制 config_version = 1.0，按 target_chat_id + user_id 的 Topic 映射，並加入應用內遷移流程（REQ-20260204-004-topic-mapping-per-target，REQ-20260204-006-config-migration-flow）。
+- 補齊遷移與預設命名相關測試，並更新文件說明（REQ-20260205-001-audit-tests-docs）。
+- 簡化遷移流程，只保留 `config-old-0.1.toml` 備份（REQ-20260205-002-drop-config-sample）。
+- 新增 run once 單一目標過濾（CLI/GUI 可選單一群組）（REQ-20260205-003-once-target-filter）。
+- 將 `config-old-*.toml` 遷移備份加入 git 忽略（REQ-20260205-004-ignore-old-configs）。
 
 ## 0.3.0 — 2026-01-29
 - 新增雙帳號橋接：由發送端帳號推送控制群訊息，使主帳號恢復通知（REQ-20260129-002-bridge-implementation）。

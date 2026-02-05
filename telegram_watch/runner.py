@@ -53,6 +53,23 @@ def _phone_prompt(role: str) -> str:
     return input(f"{label} phone (or bot token): ")
 
 
+def _resolve_once_targets(config: Config, selector: str | None) -> tuple[TargetGroupConfig, ...]:
+    if not selector:
+        return tuple(config.targets)
+    selector = selector.strip()
+    if not selector:
+        return tuple(config.targets)
+    if selector in config.target_by_name:
+        return (config.target_by_name[selector],)
+    try:
+        target_chat_id = int(selector)
+    except (TypeError, ValueError):
+        target_chat_id = None
+    if target_chat_id is not None and target_chat_id in config.target_by_chat_id:
+        return (config.target_by_chat_id[target_chat_id],)
+    raise ValueError(f"Unknown target selector: {selector}")
+
+
 async def _start_client(client: TelegramClient, role: str) -> None:
     await client.start(phone=lambda: _phone_prompt(role))
 
@@ -62,13 +79,15 @@ async def run_once(
     since: datetime,
     push: bool = False,
     since_label: str | None = None,
+    target_selector: str | None = None,
 ) -> list[Path]:
     """Fetch messages for a window, store them, and return report paths."""
+    targets = _resolve_once_targets(config, target_selector)
     client = _build_client(config)
     await _start_client(client, "primary")
     try:
         captures: list[tuple[StoredMessage, list[StoredMedia]]] = []
-        for target in config.targets:
+        for target in targets:
             captures.extend(await _collect_window(client, config, target, since))
     finally:
         await client.disconnect()
@@ -77,7 +96,7 @@ async def run_once(
     with db_session(config.storage.db_path) as conn:
         for message, media in captures:
             persist_message(conn, message, media)
-        for target in config.targets:
+        for target in targets:
             stored_by_target[target.name] = fetch_messages_between(
                 conn,
                 target.tracked_user_ids,
@@ -86,7 +105,7 @@ async def run_once(
                 chat_ids=[target.target_chat_id],
             )
     report_paths: list[Path] = []
-    for target in config.targets:
+    for target in targets:
         report_path = generate_report(
             stored_by_target.get(target.name, []),
             config,
@@ -912,7 +931,7 @@ async def _send_messages_to_control(
     fallback_client: TelegramClient | None = None,
 ) -> None:
     for message in messages:
-        reply_to = _topic_reply_id_for_message(control, message)
+        reply_to = _topic_reply_id_for_message(control, target.target_chat_id, message)
         text = _format_control_message(message, config, target)
         await _send_message_with_fallback(
             client,
@@ -1014,11 +1033,12 @@ def _format_control_message(
 
 def _topic_reply_id_for_message(
     control: ControlGroupConfig,
+    target_chat_id: int,
     message: DbMessage,
 ) -> int | None:
     if not (control.is_forum and control.topic_routing_enabled):
         return None
-    topic_id = control.topic_user_map.get(message.sender_id)
+    topic_id = control.topic_target_map.get(target_chat_id, {}).get(message.sender_id)
     if not topic_id or topic_id == 1:
         return None
     return topic_id
@@ -1028,8 +1048,10 @@ def _topic_routing_enabled(control: ControlGroupConfig) -> bool:
     return bool(control.is_forum and control.topic_routing_enabled)
 
 
-def _topic_reply_id_for_user(control: ControlGroupConfig, user_id: int) -> int | None:
-    topic_id = control.topic_user_map.get(user_id)
+def _topic_reply_id_for_user(
+    control: ControlGroupConfig, target_chat_id: int, user_id: int
+) -> int | None:
+    topic_id = control.topic_target_map.get(target_chat_id, {}).get(user_id)
     if not topic_id or topic_id == 1:
         return None
     return topic_id
@@ -1069,7 +1091,7 @@ async def _send_topic_reports(
             f"Window: {window}\n"
             f"Messages: {len(items)}"
         )
-        reply_to = _topic_reply_id_for_user(control, user_id)
+        reply_to = _topic_reply_id_for_user(control, target.target_chat_id, user_id)
         await _send_file_with_fallback(
             client,
             fallback_client,

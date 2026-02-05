@@ -91,6 +91,8 @@ python -m pip install -U pip
    cp config.example.toml config.toml
    ```
 
+   一键方式：双击 `launch_tgwatch.command`（macOS）或 `launch_tgwatch.bat`（Windows），会创建 `.venv`、安装依赖、如缺失则复制 `config.toml`，并打开 GUI。
+
    提示：可使用本地 GUI 配置（默认 `http://127.0.0.1:8765`）：
 
    ```bash
@@ -107,17 +109,18 @@ python -m pip install -U pip
 
 3. 若选择手动编辑文件，请填写以下字段：
 
+   - `config_version`（必须为 `1.0`）
    - `telegram.api_id` / `telegram.api_hash`
    - `telegram.session_file`（默认 `data/tgwatch.session`）
    - `[sender] session_file`（可选：用于桥接发送的第二账号 session，使主账号能收到通知）
-   - `targets[].name`（每个目标群的名称/标签）
+   - `targets[].name`（可选标签；未填写时会显示为 `group-1`、`group-2` 等）
    - `targets[].target_chat_id`（目标群/频道 ID）
    - `targets[].tracked_user_ids`（需要跟踪的用户 ID 列表）
    - `targets[].summary_interval_minutes`（可选：每个目标群的报告频率）
    - `targets[].control_group`（可选；当存在多个控制群时必填）
    - `[targets.tracked_user_aliases]`（可选的 ID→别名映射）
    - `control_groups.<name>.control_chat_id`（接收报告与命令的控制群）
-   - `control_groups.<name>.is_forum` / `control_groups.<name>.topic_routing_enabled` / `[control_groups.<name>.topic_user_map]`（可选：按用户分流到 TG Topic）
+   - `control_groups.<name>.is_forum` / `control_groups.<name>.topic_routing_enabled` / `[control_groups.<name>.topic_target_map.<target_chat_id>]`（可选：按用户分流到 TG Topic）
    - `storage.db_path` 与 `storage.media_dir`
    - `reporting.reports_dir` 与 `reporting.summary_interval_minutes`（默认报告频率）
    - `reporting.timezone`（如 `Asia/Shanghai`、`America/Los_Angeles` 等）
@@ -126,6 +129,25 @@ python -m pip install -U pip
    - `[display] show_ids`（是否显示 ID，默认 true）与 `time_format`（strftime 格式字符串）控制控制群推送的姓名/时间展示
 
 单一群组配置仍可使用旧版 `[target]` + `[control]` 写法。
+
+### 单目标 Run once
+
+`tgwatch once` 默认会跑所有目标群。若只想跑单个群，可传目标名称或 `target_chat_id`：
+
+```bash
+tgwatch once --config config.toml --since 2h --target group-1
+tgwatch once --config config.toml --since 2h --target -1001234567890
+```
+
+### 迁移
+
+如果从旧配置升级（缺少 `config_version`），tgwatch 会停止并提示迁移。
+
+1. GUI 会锁定并显示 **Migrate Config** 按钮。
+2. CLI 的 `run`/`once` 会红色提示并询问是否迁移。
+3. 迁移会将 `config.toml` 重命名为 `config-old-0.1.toml`，并写入新的 `config.toml`（尽量迁移旧值）。
+
+请在再次运行前检查新的 `config.toml`。`config-old-0.1.toml` 等备份文件已被 git 忽略。
 
 ### Bark Key 获取指南
 
@@ -162,6 +184,8 @@ python -m tgwatch doctor --config config.toml
 ```bash
 tgwatch gui
 ```
+
+GUI 还提供 **Run once** 与 **Run daemon** 按钮并显示运行日志。`Run daemon` 会启动后台进程，关闭浏览器不会停止运行；重新打开 GUI 会继续显示日志。若尚未生成 session 文件，请先在终端运行一次 `python -m tgwatch run --config config.toml` 完成登录，再使用 GUI 触发运行。
 
 ### Once（单次报告）
 
