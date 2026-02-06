@@ -17,6 +17,8 @@
 - 优化 GUI retention 交互：Run daemon 保持可点击，点击后进入确认流程（勾选后确认按钮才可用）再启动长保留运行（REQ-20260205-007-gui-retention-click-confirm-flow）。
 - GUI 新增 `Stop daemon` 控制，并修复 run 启动后 retention 确认框不消失的问题，可直接在 Runner 面板管理 daemon 生命周期（REQ-20260205-008-gui-run-stop-and-confirm-dismiss）。
 - 在 push 前补强 GUI Runner 错误处理路径，并同步 run/stop/retention 确认流程文档（REQ-20260205-009-pre-push-calibration-audit）。
+- 启动脚本改为 Conda（`tgwatch`）优先并自动回退 venv，同时同步多语言安装文档（REQ-20260205-010-launcher-conda-prefer-fallback-venv）。
+- 增强启动器稳健性：macOS 启动器兼容 bash，且安装引导在 pip 工具升级失败时会给出明确警告并继续尝试（REQ-20260205-011-launcher-shell-and-bootstrap-robustness）。
 
 ## 0.3.0 — 2026-01-29
 - 新增双账号桥接：由发送端账号推送控制群消息，使主账号恢复通知（REQ-20260129-002-bridge-implementation）。

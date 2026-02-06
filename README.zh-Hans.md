@@ -91,7 +91,7 @@ python -m pip install -U pip
    cp config.example.toml config.toml
    ```
 
-   一键方式：双击 `launch_tgwatch.command`（macOS）或 `launch_tgwatch.bat`（Windows），会创建 `.venv`、安装依赖、如缺失则复制 `config.toml`，并打开 GUI。
+   一键方式：双击 `launch_tgwatch.command`（macOS）或 `launch_tgwatch.bat`（Windows）。启动器现在优先使用 Conda（环境名 `tgwatch`）：若检测到 Conda 则复用/创建 `tgwatch`，若没有 Conda 则回退 `.venv`。随后安装依赖、如缺失则复制 `config.toml`，并打开 GUI。macOS 启动器已兼容 bash；若在受限网络下 `pip/setuptools/wheel` 升级失败，会给出警告并继续尝试安装项目。
 
    提示：可使用本地 GUI 配置（默认 `http://127.0.0.1:8765`）：
 

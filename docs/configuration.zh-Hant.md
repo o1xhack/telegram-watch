@@ -10,7 +10,7 @@
 cp config.example.toml config.toml
 ```
 
-一鍵方式：雙擊 `launch_tgwatch.command`（macOS）或 `launch_tgwatch.bat`（Windows），會建立 `.venv`、安裝依賴，若缺少則複製 `config.toml`，並開啟 GUI。
+一鍵方式：雙擊 `launch_tgwatch.command`（macOS）或 `launch_tgwatch.bat`（Windows）。啟動器優先使用 Conda（環境名 `tgwatch`）：有 Conda 時會重用/建立 `tgwatch`，沒有 Conda 時回退 `.venv`。隨後安裝依賴、若缺少則複製 `config.toml`，並開啟 GUI。macOS 啟動器相容 bash；受限網路下若 `pip/setuptools/wheel` 升級失敗，會提示警告並繼續嘗試安裝專案。
 
 請確認檔案頂部包含 `config_version = 1.0`，舊版本會被拒絕執行。
 

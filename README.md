@@ -92,7 +92,7 @@ Once installed and your environment is active, the rest is the same for everyone
    cp config.example.toml config.toml
    ```
 
-   One-click option: double-click `launch_tgwatch.command` (macOS) or `launch_tgwatch.bat` (Windows). It will create `.venv`, install dependencies, copy `config.toml` if missing, and open the GUI.
+   One-click option: double-click `launch_tgwatch.command` (macOS) or `launch_tgwatch.bat` (Windows). The launcher now prefers Conda (`tgwatch` env): if Conda exists it will reuse/create `tgwatch`; if Conda is unavailable it falls back to `.venv`. It then installs dependencies, copies `config.toml` if missing, and opens the GUI. The macOS launcher is bash-compatible, and if `pip/setuptools/wheel` upgrade fails under restricted networks it will warn and continue to attempt project installation.
 
    Tip: launch the local GUI to edit config without touching the file:
 

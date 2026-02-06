@@ -91,7 +91,7 @@ python -m pip install -U pip
    cp config.example.toml config.toml
    ```
 
-   ワンクリックで始める場合は `launch_tgwatch.command`（macOS）または `launch_tgwatch.bat`（Windows）をダブルクリックしてください。.venv を作成し、依存をインストールし、`config.toml` が無ければコピーして GUI を開きます。
+   ワンクリックで始める場合は `launch_tgwatch.command`（macOS）または `launch_tgwatch.bat`（Windows）をダブルクリックしてください。ランチャーは Conda（`tgwatch` 環境）を優先し、Conda があれば `tgwatch` を再利用/作成、無ければ `.venv` にフォールバックします。その後、依存をインストールし、`config.toml` が無ければコピーして GUI を開きます。macOS ランチャーは bash 互換で、制限ネットワーク下で `pip/setuptools/wheel` の更新に失敗しても警告を出してプロジェクトのインストールを継続します。
 
    ヒント：ローカル GUI を起動して編集できます（既定 `http://127.0.0.1:8765`）。
 

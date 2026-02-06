@@ -10,7 +10,7 @@
 cp config.example.toml config.toml
 ```
 
-One-click option: double-click `launch_tgwatch.command` (macOS) or `launch_tgwatch.bat` (Windows). It creates `.venv`, installs dependencies, copies `config.toml` if missing, and opens the GUI.
+One-click option: double-click `launch_tgwatch.command` (macOS) or `launch_tgwatch.bat` (Windows). The launcher prefers Conda (`tgwatch` env): when Conda is available it reuses/creates `tgwatch`; otherwise it falls back to `.venv`. It then installs dependencies, copies `config.toml` if missing, and opens the GUI.
 
 Make sure `config_version = 1.0` is present at the top of the file. Older versions will be rejected.
 
