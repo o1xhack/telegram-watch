@@ -2,6 +2,8 @@
 
 [English](configuration.md) | [简体中文](configuration.zh-Hans.md) | [繁體中文](configuration.zh-Hant.md) | [日本語](configuration.ja.md)
 
+**ドキュメント版:** `v1.0.0`
+
 `tgwatch` は `config.toml` から実行パラメータを読み込みます。このファイルはローカルにのみ保存し、共有やコミットはしないでください。`python -m tgwatch ...` を実行する前に、すべての項目を埋めてください。
 
 ## 1. サンプルをコピー

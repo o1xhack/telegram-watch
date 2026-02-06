@@ -2,6 +2,8 @@
 
 [English](configuration.md) | [简体中文](configuration.zh-Hans.md) | [繁體中文](configuration.zh-Hant.md) | [日本語](configuration.ja.md)
 
+**文档版本：** `v1.0.0`
+
 `tgwatch` 会从 `config.toml` 读取所有运行参数。该文件应仅保存在本机，禁止提交或分享。按以下步骤填写所有字段后再运行 `python -m tgwatch ...`。
 
 ## 1. 复制示例配置

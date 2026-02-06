@@ -1,21 +1,26 @@
 # telegram-watch
 
-[English](README.md) | [简体中文](README.zh-Hans.md) | [繁體中文](README.zh-Hant.md) | [日本語](README.ja.md)
+[English](README.md) | [简体中文](docs/README.zh-Hans.md) | [繁體中文](docs/README.zh-Hant.md) | [日本語](docs/README.ja.md)
+
+**Docs Version:** `v1.0.0`
 
 [Follow on X](https://x.com/o1xhack) · [Telegram EN channel](https://t.me/lalabeng) · [Telegram 中文频道](https://t.me/o1xinsight)
 
 ## Key Features
 
-Turn noisy Telegram groups into a personal, searchable signal feed — **fully local, no Bot required**.
+Turn noisy Telegram groups into a private, structured signal system — **fully local, no bot required**.
 
-- **Follow the signal, not the noise**: Track a strict watchlist of high-value accounts inside large groups (filtered by user ID).
-- **Your Chat is the Dashboard**: Receive digests and live alerts in a private "Control Chat". Query anytime with `/last`, `/since`, or `/export` directly from your own account.
-- **Scheduled Digests + Live Stream**: Get auto-generated HTML reports with media context, plus a real-time stream of tracked messages linking back to the source (`MSG` link).
-- **Permanent Evidence Trail**: Messages and replies are archived in SQLite; media snapshots are saved locally for offline review.
-- **Auto-Organized via Topics**: Automatically route tracked users into their own Telegram Topics (forum mode) to keep conversations distinct.
-- **Set & Forget Reliability**: Built for the long haul with auto-retention cleanup, heartbeat alerts, and smart FloodWait handling.
-- **Privacy-First Architecture**: Runs 100% on your machine — no cloud, no third-party collectors, no data leakage.
-- **Cross-Platform Alerts**: Optional Bark mirroring to push summaries and errors to your phone outside of Telegram.
+![telegram-watch GUI](docs/assets/tgwatch-gui-v1.png)
+
+- **Multi-Target Monitoring**: Track multiple groups/channels at once, each with its own watchlist, aliases, and report interval.
+- **Control Group Routing**: Route each target to a specific control group to separate workflows cleanly.
+- **Topic Mapping Per Target**: In forum-mode control groups, map `target_chat_id + user_id` to topic IDs so the same user ID can route differently across source groups.
+- **GUI-First Configuration**: Manage credentials, targets, control groups, mappings, and storage from a local web UI.
+- **One-Click Local Launcher**: Start with Conda-first (`tgwatch`) setup and automatic `venv` fallback.
+- **GUI Runner Controls**: Run once (with optional target and push), start daemon, stop daemon, and inspect live logs in one place.
+- **Safe Run Guardrails**: Session prechecks, retention confirmation for long windows, and explicit in-UI error feedback.
+- **Local Persistence by Default**: Archive messages in SQLite, keep media snapshots, and generate HTML reports for review.
+- **Privacy by Design**: No cloud dependency, no secret logging, and sensitive runtime files excluded from git.
 
 
 Perfect for: community operators, researchers, traders, or anyone who needs **signal extraction + local archiving** from Telegram. 
