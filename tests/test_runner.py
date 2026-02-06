@@ -66,6 +66,58 @@ def build_config(tmp_path: Path) -> Config:
     )
 
 
+def build_multi_target_config(tmp_path: Path) -> Config:
+    telegram = TelegramConfig(api_id=1, api_hash="abcdefghijk", session_file=tmp_path / "session")
+    target1 = TargetGroupConfig(
+        name="group-1",
+        target_chat_id=-1001,
+        tracked_user_ids=(111,),
+        tracked_user_aliases=MappingProxyType({}),
+        summary_interval_minutes=120,
+        control_group="default",
+    )
+    target2 = TargetGroupConfig(
+        name="group-2",
+        target_chat_id=-1002,
+        tracked_user_ids=(222,),
+        tracked_user_aliases=MappingProxyType({}),
+        summary_interval_minutes=120,
+        control_group="default",
+    )
+    control = ControlGroupConfig(
+        key="default",
+        control_chat_id=-456,
+        is_forum=False,
+        topic_routing_enabled=False,
+        topic_target_map=MappingProxyType({}),
+    )
+    storage = StorageConfig(db_path=tmp_path / "db.sqlite3", media_dir=tmp_path / "media")
+    reporting = ReportingConfig(
+        reports_dir=tmp_path / "reports",
+        summary_interval_minutes=120,
+        timezone=timezone.utc,
+        retention_days=30,
+    )
+    display = DisplayConfig(show_ids=True, time_format="%Y.%m.%d %H:%M:%S (%Z)")
+    notifications = NotificationConfig(bark_key=None)
+    targets = (target1, target2)
+    return Config(
+        config_version=1.0,
+        telegram=telegram,
+        sender=None,
+        targets=targets,
+        control_groups=MappingProxyType({"default": control}),
+        target_by_chat_id=MappingProxyType({target1.target_chat_id: target1, target2.target_chat_id: target2}),
+        target_by_name=MappingProxyType({target1.name: target1, target2.name: target2}),
+        control_by_chat_id=MappingProxyType({control.control_chat_id: control}),
+        targets_by_control=MappingProxyType({"default": targets}),
+        storage=storage,
+        reporting=reporting,
+        display=display,
+        notifications=notifications,
+    )
+
+
 def test_heartbeat_repeats_after_idle_interval():
     tracker = runner._ActivityTracker()
     now = datetime(2026, 1, 25, 12, 0, 0, tzinfo=timezone.utc)
@@ -158,6 +210,48 @@ async def test_push_once_reports_uses_selected_targets(monkeypatch, tmp_path: Pa
     )
 
     assert captured == [selected[0].name]
+
+
+@pytest.mark.asyncio
+async def test_run_once_multi_target_generates_unique_report_files(monkeypatch, tmp_path: Path):
+    config = build_multi_target_config(tmp_path)
+    since = datetime.now(timezone.utc) - timedelta(hours=1)
+
+    class DummyClient:
+        async def disconnect(self) -> None:
+            return None
+
+    @contextmanager
+    def fake_db_session(_path: Path):
+        yield object()
+
+    async def fake_start_client(_client, _role):
+        return None
+
+    async def fake_collect_window(_client, _config, _target, _since):
+        return []
+
+    def fake_fetch_messages_between(_conn, _ids, _since, _until, **_kwargs):
+        return []
+
+    def fake_generate_report(_messages, _config, _since, _until, **kwargs):
+        report_dir = kwargs["report_dir"]
+        report_name = kwargs["report_name"]
+        return report_dir / report_name
+
+    monkeypatch.setattr(runner, "_build_client", lambda _config: DummyClient())
+    monkeypatch.setattr(runner, "_start_client", fake_start_client)
+    monkeypatch.setattr(runner, "_collect_window", fake_collect_window)
+    monkeypatch.setattr(runner, "db_session", fake_db_session)
+    monkeypatch.setattr(runner, "persist_message", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(runner, "fetch_messages_between", fake_fetch_messages_between)
+    monkeypatch.setattr(runner, "generate_report", fake_generate_report)
+
+    report_paths = await runner.run_once(config, since, push=False)
+
+    assert len(report_paths) == 2
+    assert len(set(report_paths)) == 2
+    assert sorted(path.name for path in report_paths) == ["index_-1001.html", "index_-1002.html"]
 
 
 @pytest.mark.asyncio

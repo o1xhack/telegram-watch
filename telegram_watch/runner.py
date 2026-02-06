@@ -92,6 +92,12 @@ async def run_once(
     finally:
         await client.disconnect()
     until = utc_now()
+    report_now = utc_now()
+    once_report_dir = (
+        config.reporting.reports_dir
+        / report_now.strftime("%Y-%m-%d")
+        / report_now.strftime("%H%M")
+    )
     stored_by_target: dict[str, list[DbMessage]] = {}
     with db_session(config.storage.db_path) as conn:
         for message, media in captures:
@@ -105,13 +111,19 @@ async def run_once(
                 chat_ids=[target.target_chat_id],
             )
     report_paths: list[Path] = []
+    multi_target_once = len(targets) > 1
     for target in targets:
+        report_name = "index.html"
+        if multi_target_once:
+            report_name = f"index_{target.target_chat_id}.html"
         report_path = generate_report(
             stored_by_target.get(target.name, []),
             config,
             since,
             until,
             target=target,
+            report_dir=once_report_dir,
+            report_name=report_name,
         )
         report_paths.append(report_path)
     if push:
