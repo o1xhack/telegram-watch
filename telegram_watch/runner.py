@@ -994,7 +994,7 @@ async def _send_media_for_message(
             continue
         if media.is_reply:
             reply_label = (
-                config.format_user_label(message.replied_sender_id)
+                config.format_user_label(message.replied_sender_id, target=target)
                 if message.replied_sender_id
                 else "unknown"
             )

@@ -19,7 +19,7 @@ from telegram_watch.config import (
     TargetGroupConfig,
     TelegramConfig,
 )
-from telegram_watch.storage import DbMessage
+from telegram_watch.storage import DbMedia, DbMessage
 from telegram_watch.timeutils import utc_now
 
 
@@ -252,6 +252,100 @@ async def test_run_once_multi_target_generates_unique_report_files(monkeypatch, 
     assert len(report_paths) == 2
     assert len(set(report_paths)) == 2
     assert sorted(path.name for path in report_paths) == ["index_-1001.html", "index_-1002.html"]
+
+
+@pytest.mark.asyncio
+async def test_reply_media_caption_uses_target_scoped_alias(monkeypatch, tmp_path: Path):
+    telegram = TelegramConfig(api_id=1, api_hash="abcdefghijk", session_file=tmp_path / "session")
+    target_a = TargetGroupConfig(
+        name="group-a",
+        target_chat_id=-1001,
+        tracked_user_ids=(111,),
+        tracked_user_aliases=MappingProxyType({111: "Alpha"}),
+        summary_interval_minutes=120,
+        control_group="default",
+    )
+    target_b = TargetGroupConfig(
+        name="group-b",
+        target_chat_id=-1002,
+        tracked_user_ids=(222, 999),
+        tracked_user_aliases=MappingProxyType({999: "ReplyAliasInOtherTarget"}),
+        summary_interval_minutes=120,
+        control_group="default",
+    )
+    control = ControlGroupConfig(
+        key="default",
+        control_chat_id=-456,
+        is_forum=False,
+        topic_routing_enabled=False,
+        topic_target_map=MappingProxyType({}),
+    )
+    storage = StorageConfig(db_path=tmp_path / "db.sqlite3", media_dir=tmp_path / "media")
+    reporting = ReportingConfig(
+        reports_dir=tmp_path / "reports",
+        summary_interval_minutes=120,
+        timezone=timezone.utc,
+        retention_days=30,
+    )
+    display = DisplayConfig(show_ids=True, time_format="%Y.%m.%d %H:%M:%S (%Z)")
+    notifications = NotificationConfig(bark_key=None)
+    config = Config(
+        config_version=1.0,
+        telegram=telegram,
+        sender=None,
+        targets=(target_a, target_b),
+        control_groups=MappingProxyType({"default": control}),
+        target_by_chat_id=MappingProxyType({target_a.target_chat_id: target_a, target_b.target_chat_id: target_b}),
+        target_by_name=MappingProxyType({target_a.name: target_a, target_b.name: target_b}),
+        control_by_chat_id=MappingProxyType({control.control_chat_id: control}),
+        targets_by_control=MappingProxyType({"default": (target_a, target_b)}),
+        storage=storage,
+        reporting=reporting,
+        display=display,
+        notifications=notifications,
+    )
+
+    media_file = tmp_path / "reply.jpg"
+    media_file.write_bytes(b"x")
+    message = DbMessage(
+        chat_id=target_a.target_chat_id,
+        message_id=42,
+        sender_id=111,
+        date=datetime.now(timezone.utc),
+        text="hello",
+        reply_to_msg_id=1,
+        replied_sender_id=999,
+        replied_date=datetime.now(timezone.utc),
+        replied_text="quoted",
+        media=[DbMedia(media_index=0, file_path=str(media_file), mime_type="image/jpeg", file_size=1, is_reply=True)],
+    )
+    sent: list[str] = []
+
+    async def fake_send_file_with_fallback(
+        _client,
+        _fallback,
+        _chat_id,
+        _file_path,
+        *,
+        caption=None,
+        reply_to=None,
+    ):
+        sent.append(caption or "")
+
+    monkeypatch.setattr(runner, "_send_file_with_fallback", fake_send_file_with_fallback)
+
+    await runner._send_media_for_message(
+        object(),
+        control.control_chat_id,
+        message,
+        config,
+        target_a,
+        reply_to=None,
+    )
+
+    assert len(sent) == 1
+    assert "ReplyAliasInOtherTarget" not in sent[0]
+    assert "Original sender: 999" in sent[0]
 
 
 @pytest.mark.asyncio
