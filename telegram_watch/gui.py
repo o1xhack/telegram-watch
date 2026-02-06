@@ -1460,8 +1460,10 @@ class _RunnerManager:
         pid = self._read_pid()
         if pid is None:
             return False, None
-        if self._pid_is_running(pid):
+        if self._pid_is_running(pid) and self._pid_matches_run_daemon(pid):
             return True, pid
+        if self._pid_is_running(pid):
+            logger.warning("Ignoring PID %s from run.pid because it does not match tgwatch run daemon.", pid)
         self.run_pid_path.unlink(missing_ok=True)
         return False, None
 
@@ -1496,6 +1498,33 @@ class _RunnerManager:
         except OSError:
             return False
         return str(pid) in result.stdout
+
+    def _pid_matches_run_daemon(self, pid: int) -> bool:
+        """Best-effort identity check to avoid killing unrelated reused PIDs."""
+        if os.name == "nt":
+            # Windows tasklist output does not reliably include command args in this flow.
+            return True
+        command = self._pid_command(pid)
+        if not command:
+            return False
+        config_tokens = {str(self.config_path), str(self.config_path.resolve()), self.config_path.name}
+        has_config = any(token in command for token in config_tokens)
+        has_run = "tgwatch run" in command or "-m tgwatch run" in command
+        return has_run and has_config
+
+    def _pid_command(self, pid: int) -> str:
+        try:
+            result = subprocess.run(
+                ["ps", "-p", str(pid), "-o", "command="],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except OSError:
+            return ""
+        if result.returncode != 0:
+            return ""
+        return result.stdout.strip()
 
     def _terminate_run_process(self, pid: int) -> bool:
         if pid <= 0:

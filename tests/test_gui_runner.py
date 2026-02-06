@@ -85,3 +85,18 @@ def test_stop_run_failure(monkeypatch, tmp_path: Path) -> None:
     assert payload["ok"] is False
     assert "Failed to stop run daemon" in payload["status"]
     assert manager.run_pid_path.exists()
+
+
+def test_current_run_clears_pid_when_process_identity_mismatch(monkeypatch, tmp_path: Path) -> None:
+    manager = _manager(tmp_path)
+    manager._ensure_runtime_dir()
+    manager.run_pid_path.write_text("12345", encoding="utf-8")
+
+    monkeypatch.setattr(manager, "_pid_is_running", lambda _pid: True)
+    monkeypatch.setattr(manager, "_pid_matches_run_daemon", lambda _pid: False)
+
+    running, pid = manager._current_run()
+
+    assert running is False
+    assert pid is None
+    assert not manager.run_pid_path.exists()

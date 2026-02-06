@@ -733,7 +733,14 @@ class _SummaryLoop:
         if not messages:
             logger.info("No tracked messages since last summary.")
             return
-        report = generate_report(messages, self.config, since, now, target=self.target)
+        report = generate_report(
+            messages,
+            self.config,
+            since,
+            now,
+            target=self.target,
+            report_name=f"index_{self.target.target_chat_id}.html",
+        )
         _purge_old_reports(
             self.config.reporting.reports_dir,
             self.config.reporting.retention_days,

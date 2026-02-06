@@ -283,7 +283,10 @@ async def test_summary_loop_passes_tracker_and_bark_context(monkeypatch, tmp_pat
     def fake_fetch_messages_between(_conn, _ids, _since, _until, **_kwargs):
         return [sample_message]
 
-    def fake_generate_report(_messages, _config, _since, _until, **_kwargs):
+    captured_report_name: dict[str, object] = {}
+
+    def fake_generate_report(_messages, _config, _since, _until, **kwargs):
+        captured_report_name["report_name"] = kwargs.get("report_name")
         return tmp_path / "report.html"
 
     # Track arguments passed to _send_report_bundle.
@@ -318,3 +321,4 @@ async def test_summary_loop_passes_tracker_and_bark_context(monkeypatch, tmp_pat
     assert captured["messages"] == [sample_message]
     assert captured["tracker"] is tracker
     assert captured["bark_context"] == "(2H)"
+    assert captured_report_name["report_name"] == "index_-123.html"
