@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from telegram_watch.gui import _RunnerManager
+from telegram_watch.gui import _RunnerManager, _validate_payload
 
 
 def _manager(tmp_path: Path) -> _RunnerManager:
@@ -100,3 +100,42 @@ def test_current_run_clears_pid_when_process_identity_mismatch(monkeypatch, tmp_
     assert running is False
     assert pid is None
     assert not manager.run_pid_path.exists()
+
+
+def test_validate_payload_skips_topic_map_errors_when_routing_disabled() -> None:
+    payload = {
+        "telegram": {"api_id": "42", "api_hash": "abcdefghijk", "session_file": "data/tgwatch.session"},
+        "sender": {"enabled": False, "session_file": ""},
+        "targets": [
+            {
+                "name": "group-1",
+                "target_chat_id": "-1001",
+                "summary_interval_minutes": "",
+                "control_group": "default",
+                "tracked_users": [{"id": "123", "alias": ""}],
+            }
+        ],
+        "control_groups": [
+            {
+                "key": "default",
+                "control_chat_id": "-2001",
+                "is_forum": False,
+                "topic_routing_enabled": False,
+                "topic_target_map": [{"user_key": "", "target_chat_id": "", "user_id": "", "topic_id": ""}],
+            }
+        ],
+        "storage": {"db_path": "data/tgwatch.sqlite3", "media_dir": "data/media"},
+        "reporting": {
+            "reports_dir": "reports",
+            "summary_interval_minutes": "120",
+            "timezone": "UTC",
+            "retention_days": "30",
+        },
+        "display": {"show_ids": True, "time_format": "%Y.%m.%d %H:%M:%S (%Z)"},
+        "notifications": {"bark_key": ""},
+    }
+
+    errors, normalized = _validate_payload(payload, {})
+
+    assert not errors
+    assert normalized["control_groups"][0]["topic_target_map"] == []

@@ -2037,39 +2037,59 @@ def _validate_payload(payload: dict[str, Any], raw_existing: dict[str, Any]) -> 
         topic_enabled = bool(raw.get("topic_routing_enabled", False))
         topic_map_entries = raw.get("topic_target_map", []) or []
         topic_map = []
-        for entry in topic_map_entries:
-            user_key = str(entry.get("user_key", "")).strip()
-            target_chat_id = None
-            user_id = None
-            if user_key:
-                parts = user_key.split("|", 1)
-                if len(parts) == 2:
+        if topic_enabled:
+            for entry in topic_map_entries:
+                user_key = str(entry.get("user_key", "")).strip()
+                target_chat_id = None
+                user_id = None
+                if user_key:
+                    parts = user_key.split("|", 1)
+                    if len(parts) == 2:
+                        target_chat_id = _coerce_int(
+                            parts[0], f"control_groups[{key}].topic_target_map.target_chat_id", errors
+                        )
+                        user_id = _coerce_int(
+                            parts[1], f"control_groups[{key}].topic_target_map.user_id", errors
+                        )
+                    else:
+                        errors.append(f"control_groups[{key}] topic map user selection is invalid")
+                else:
                     target_chat_id = _coerce_int(
-                        parts[0], f"control_groups[{key}].topic_target_map.target_chat_id", errors
+                        entry.get("target_chat_id"),
+                        f"control_groups[{key}].topic_target_map.target_chat_id",
+                        errors,
                     )
                     user_id = _coerce_int(
-                        parts[1], f"control_groups[{key}].topic_target_map.user_id", errors
+                        entry.get("user_id"),
+                        f"control_groups[{key}].topic_target_map.user_id",
+                        errors,
                     )
+                topic_id = _coerce_int(
+                    entry.get("topic_id"), f"control_groups[{key}].topic_target_map.topic_id", errors
+                )
+                if target_chat_id is not None and user_id is not None and topic_id is not None:
+                    topic_map.append(
+                        {"target_chat_id": target_chat_id, "user_id": user_id, "topic_id": topic_id}
+                    )
+        else:
+            # Keep existing mappings without strict validation while routing is disabled.
+            for entry in topic_map_entries:
+                user_key = str(entry.get("user_key", "")).strip()
+                target_chat_id = None
+                user_id = None
+                if user_key:
+                    parts = user_key.split("|", 1)
+                    if len(parts) == 2:
+                        target_chat_id = _try_int(parts[0])
+                        user_id = _try_int(parts[1])
                 else:
-                    errors.append(f"control_groups[{key}] topic map user selection is invalid")
-            else:
-                target_chat_id = _coerce_int(
-                    entry.get("target_chat_id"),
-                    f"control_groups[{key}].topic_target_map.target_chat_id",
-                    errors,
-                )
-                user_id = _coerce_int(
-                    entry.get("user_id"),
-                    f"control_groups[{key}].topic_target_map.user_id",
-                    errors,
-                )
-            topic_id = _coerce_int(
-                entry.get("topic_id"), f"control_groups[{key}].topic_target_map.topic_id", errors
-            )
-            if target_chat_id is not None and user_id is not None and topic_id is not None:
-                topic_map.append(
-                    {"target_chat_id": target_chat_id, "user_id": user_id, "topic_id": topic_id}
-                )
+                    target_chat_id = _try_int(entry.get("target_chat_id"))
+                    user_id = _try_int(entry.get("user_id"))
+                topic_id = _try_int(entry.get("topic_id"))
+                if target_chat_id is not None and user_id is not None and topic_id is not None:
+                    topic_map.append(
+                        {"target_chat_id": target_chat_id, "user_id": user_id, "topic_id": topic_id}
+                    )
         if topic_enabled and not is_forum:
             errors.append(f"control_groups[{key}] topic routing requires forum mode")
         if topic_enabled and not topic_map:
@@ -2226,6 +2246,19 @@ def _coerce_int(value: Any, label: str, errors: list[str]) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         errors.append(f"{label} must be an integer")
+        return None
+
+
+def _try_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        value = value.strip()
+    if value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
         return None
 
 

@@ -349,6 +349,83 @@ async def test_reply_media_caption_uses_target_scoped_alias(monkeypatch, tmp_pat
 
 
 @pytest.mark.asyncio
+async def test_topic_report_filenames_include_target_chat_id(monkeypatch, tmp_path: Path):
+    config = build_multi_target_config(tmp_path)
+    control = config.control_groups["default"]
+    since = datetime.now(timezone.utc) - timedelta(hours=1)
+    until = datetime.now(timezone.utc)
+    report_dir = tmp_path / "reports"
+    report_names: list[str] = []
+
+    message_a = DbMessage(
+        chat_id=config.targets[0].target_chat_id,
+        message_id=1,
+        sender_id=777,
+        date=until,
+        text="A",
+        reply_to_msg_id=None,
+        replied_sender_id=None,
+        replied_date=None,
+        replied_text=None,
+        media=[],
+    )
+    message_b = DbMessage(
+        chat_id=config.targets[1].target_chat_id,
+        message_id=2,
+        sender_id=777,
+        date=until,
+        text="B",
+        reply_to_msg_id=None,
+        replied_sender_id=None,
+        replied_date=None,
+        replied_text=None,
+        media=[],
+    )
+
+    def fake_generate_report(_messages, _config, _since, _until, **kwargs):
+        report_name = kwargs["report_name"]
+        report_names.append(report_name)
+        return kwargs["report_dir"] / report_name
+
+    async def fake_send_file_with_fallback(
+        _client,
+        _fallback_client,
+        _chat_id,
+        _file_path,
+        *,
+        caption=None,
+        reply_to=None,
+    ):
+        return None
+
+    monkeypatch.setattr(runner, "generate_report", fake_generate_report)
+    monkeypatch.setattr(runner, "_send_file_with_fallback", fake_send_file_with_fallback)
+
+    await runner._send_topic_reports(
+        object(),
+        config,
+        control,
+        config.targets[0],
+        [message_a],
+        since,
+        until,
+        report_dir,
+    )
+    await runner._send_topic_reports(
+        object(),
+        config,
+        control,
+        config.targets[1],
+        [message_b],
+        since,
+        until,
+        report_dir,
+    )
+
+    assert report_names == ["index_-1001_777.html", "index_-1002_777.html"]
+
+
+@pytest.mark.asyncio
 async def test_summary_loop_passes_tracker_and_bark_context(monkeypatch, tmp_path: Path):
     config = build_config(tmp_path)
     target = config.targets[0]

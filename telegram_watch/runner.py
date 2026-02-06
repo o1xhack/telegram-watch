@@ -1097,7 +1097,7 @@ async def _send_topic_reports(
     window = f"{since.isoformat()} → {(until.isoformat() if until else 'now')}"
     for user_id, items in grouped.items():
         label = config.format_user_label(user_id, target=target)
-        report_name = f"index_{user_id}.html"
+        report_name = f"index_{target.target_chat_id}_{user_id}.html"
         report_path = generate_report(
             items,
             config,
