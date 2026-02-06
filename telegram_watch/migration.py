@@ -94,26 +94,37 @@ def _build_new_config(raw: dict[str, Any]) -> str:
     control_groups = raw.get("control_groups") if isinstance(raw.get("control_groups"), dict) else None
     control_raw = raw.get("control") if isinstance(raw.get("control"), dict) else None
 
-    control_key = "default"
-    control_chat_id = None
-    is_forum = False
-    topic_routing_enabled = False
-    topic_user_map = {}
-
+    migrated_controls: dict[str, dict[str, Any]] = {}
+    default_control_key = "default"
     if control_groups:
-        # pick first control group as default
-        first_key = next(iter(control_groups.keys()))
-        control_key = str(first_key)
-        first_group = control_groups[first_key] or {}
-        control_chat_id = first_group.get("control_chat_id")
-        is_forum = bool(first_group.get("is_forum", False))
-        topic_routing_enabled = bool(first_group.get("topic_routing_enabled", False))
-        topic_user_map = first_group.get("topic_user_map", {}) or {}
+        for idx, (key, group_obj) in enumerate(control_groups.items(), start=1):
+            group = group_obj if isinstance(group_obj, dict) else {}
+            control_key = str(key) if str(key).strip() else f"control-{idx}"
+            if idx == 1:
+                default_control_key = control_key
+            migrated_controls[control_key] = {
+                "control_chat_id": group.get("control_chat_id"),
+                "is_forum": bool(group.get("is_forum", False)),
+                "topic_routing_enabled": bool(group.get("topic_routing_enabled", False)),
+                "topic_target_map": _normalize_topic_target_map(group.get("topic_target_map")),
+                "topic_user_map": _normalize_int_map(group.get("topic_user_map")),
+            }
     elif control_raw:
-        control_chat_id = control_raw.get("control_chat_id")
-        is_forum = bool(control_raw.get("is_forum", False))
-        topic_routing_enabled = bool(control_raw.get("topic_routing_enabled", False))
-        topic_user_map = control_raw.get("topic_user_map", {}) or {}
+        migrated_controls[default_control_key] = {
+            "control_chat_id": control_raw.get("control_chat_id"),
+            "is_forum": bool(control_raw.get("is_forum", False)),
+            "topic_routing_enabled": bool(control_raw.get("topic_routing_enabled", False)),
+            "topic_target_map": _normalize_topic_target_map(control_raw.get("topic_target_map")),
+            "topic_user_map": _normalize_int_map(control_raw.get("topic_user_map")),
+        }
+    else:
+        migrated_controls[default_control_key] = {
+            "control_chat_id": None,
+            "is_forum": False,
+            "topic_routing_enabled": False,
+            "topic_target_map": {},
+            "topic_user_map": {},
+        }
 
     lines: list[str] = []
     lines.append("config_version = 1.0")
@@ -141,7 +152,7 @@ def _build_new_config(raw: dict[str, Any]) -> str:
         target_chat_id = target.get("target_chat_id")
         tracked_ids = target.get("tracked_user_ids", []) or []
         summary_interval = target.get("summary_interval_minutes")
-        control_group = target.get("control_group") or control_key
+        control_group = target.get("control_group") or default_control_key
 
         lines.append("")
         lines.append("[[targets]]")
@@ -162,23 +173,43 @@ def _build_new_config(raw: dict[str, Any]) -> str:
             for user_id, alias in aliases.items():
                 lines.append(f"{user_id} = {toml_string(str(alias))}")
 
-    lines.append("")
-    lines.append(f"[control_groups.{control_key}]")
-    if control_chat_id is not None:
-        lines.append(f"control_chat_id = {control_chat_id}")
-    lines.append(f"is_forum = {toml_bool(is_forum)}")
-    lines.append(f"topic_routing_enabled = {toml_bool(topic_routing_enabled)}")
+    target_ids_by_control: dict[str, list[Any]] = {}
+    for target in targets_raw:
+        if not isinstance(target, dict):
+            continue
+        target_chat_id = target.get("target_chat_id")
+        if target_chat_id is None:
+            continue
+        control_key = str(target.get("control_group") or default_control_key)
+        target_ids_by_control.setdefault(control_key, []).append(target_chat_id)
 
-    # Build topic_target_map from the first target
-    if topic_routing_enabled and topic_user_map and targets_raw:
-        first_target = targets_raw[0] if isinstance(targets_raw[0], dict) else {}
-        target_chat_id = first_target.get("target_chat_id")
-        if target_chat_id is not None:
+    for control_key, control in migrated_controls.items():
+        lines.append("")
+        lines.append(f"[control_groups.{control_key}]")
+        control_chat_id = control.get("control_chat_id")
+        if control_chat_id is not None:
+            lines.append(f"control_chat_id = {control_chat_id}")
+        is_forum = bool(control.get("is_forum", False))
+        topic_routing_enabled = bool(control.get("topic_routing_enabled", False))
+        lines.append(f"is_forum = {toml_bool(is_forum)}")
+        lines.append(f"topic_routing_enabled = {toml_bool(topic_routing_enabled)}")
+
+        if not topic_routing_enabled:
+            continue
+        topic_target_map = dict(control.get("topic_target_map", {}) or {})
+        if not topic_target_map:
+            topic_user_map = dict(control.get("topic_user_map", {}) or {})
+            mapped_targets = target_ids_by_control.get(control_key) or []
+            for target_chat_id in mapped_targets:
+                topic_target_map[str(target_chat_id)] = dict(topic_user_map)
+        for target_chat_id, user_map in topic_target_map.items():
+            if not user_map:
+                continue
             lines.append("")
             lines.append(
                 f"[control_groups.{control_key}.topic_target_map.{toml_string(str(target_chat_id))}]"
             )
-            for user_id, topic_id in topic_user_map.items():
+            for user_id, topic_id in user_map.items():
                 lines.append(f"{user_id} = {topic_id}")
 
     lines.append("")
@@ -225,3 +256,28 @@ def toml_bool(value: bool) -> str:
 
 def toml_list(values: list[Any]) -> str:
     return "[" + ", ".join(str(value) for value in values) + "]"
+
+
+def _normalize_int_map(value: Any) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    out: dict[str, int] = {}
+    for raw_key, raw_val in value.items():
+        try:
+            key = str(int(raw_key))
+            val = int(raw_val)
+        except (TypeError, ValueError):
+            continue
+        out[key] = val
+    return out
+
+
+def _normalize_topic_target_map(value: Any) -> dict[str, dict[str, int]]:
+    if not isinstance(value, dict):
+        return {}
+    out: dict[str, dict[str, int]] = {}
+    for target_chat_id, user_map in value.items():
+        normalized = _normalize_int_map(user_map)
+        if normalized:
+            out[str(target_chat_id)] = normalized
+    return out

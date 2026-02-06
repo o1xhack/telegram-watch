@@ -164,9 +164,7 @@ class Config:
     ) -> str | None:
         resolved = self._resolve_target(target=target, chat_id=chat_id)
         if resolved is not None:
-            alias = resolved.tracked_user_aliases.get(user_id)
-            if alias:
-                return alias
+            return resolved.tracked_user_aliases.get(user_id)
         for group in self.targets:
             alias = group.tracked_user_aliases.get(user_id)
             if alias:

@@ -583,6 +583,42 @@ def test_target_aliases_are_scoped(tmp_path):
     assert config.describe_user(456, target=target_b) == "Beta (456)"
 
 
+def test_target_alias_scope_does_not_fallback_to_other_target(tmp_path):
+    cfg_path = write_config(
+        tmp_path,
+        """
+        [telegram]
+        api_id = 42
+        api_hash = "abcdefghijk"
+
+        [[targets]]
+        name = "group-a"
+        target_chat_id = -1001
+        tracked_user_ids = [123]
+        control_group = "main"
+
+        [targets.tracked_user_aliases]
+        123 = "Alpha"
+
+        [[targets]]
+        name = "group-b"
+        target_chat_id = -1002
+        tracked_user_ids = [123]
+        control_group = "main"
+
+        [control_groups.main]
+        control_chat_id = -1003
+
+        [storage]
+        db_path = "data/app.sqlite3"
+        media_dir = "data/media"
+        """,
+    )
+    config = load_config(cfg_path)
+    target_b = config.target_by_name["group-b"]
+    assert config.describe_user(123, target=target_b) == "123"
+
+
 def test_rejects_target_and_targets_both_set(tmp_path):
     cfg_path = write_config(
         tmp_path,
