@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Sequence
 import os
 
-from .config import Config
+from .config import Config, TargetGroupConfig
 from .storage import DbMessage, DbMedia
 from .links import build_message_link
 from .timeutils import humanize_timedelta, utc_now
@@ -35,6 +35,8 @@ def generate_report(
     config: Config,
     since: datetime,
     until: datetime | None,
+    *,
+    target: TargetGroupConfig | None = None,
     report_dir: Path | None = None,
     report_name: str = "index.html",
 ) -> Path:
@@ -47,7 +49,7 @@ def generate_report(
             / now.strftime("%H%M")
         )
     report_dir.mkdir(parents=True, exist_ok=True)
-    html = _render_html(messages, config, since, until, report_dir)
+    html = _render_html(messages, config, since, until, report_dir, target=target)
     path = report_dir / report_name
     path.write_text(html, encoding="utf-8")
     return path
@@ -59,6 +61,8 @@ def _render_html(
     since: datetime,
     until: datetime | None,
     report_dir: Path,
+    *,
+    target: TargetGroupConfig | None = None,
 ) -> str:
     grouped = _group_by_user(messages)
     until_text = until.isoformat() if until else "now"
@@ -81,17 +85,23 @@ def _render_html(
     if not grouped:
         body_parts.append("<p>No tracked messages.</p>")
     for sender_id, items in grouped.items():
-        label = config.describe_user(sender_id)
+        label = config.describe_user(sender_id, target=target)
         body_parts.append(f'<div class="user-section">')
         body_parts.append(f"<h2>{escape(label)}</h2>")
         for msg in items:
-            body_parts.append(_render_message(msg, config, report_dir))
+            body_parts.append(_render_message(msg, config, report_dir, target=target))
         body_parts.append("</div>")
     body_parts.append("</body></html>")
     return "\n".join(body_parts)
 
 
-def _render_message(message: DbMessage, config: Config, report_dir: Path) -> str:
+def _render_message(
+    message: DbMessage,
+    config: Config,
+    report_dir: Path,
+    *,
+    target: TargetGroupConfig | None = None,
+) -> str:
     text_html = (
         f"<pre>{escape(message.text)}</pre>" if message.text is not None else "<em>No text</em>"
     )
@@ -104,7 +114,7 @@ def _render_message(message: DbMessage, config: Config, report_dir: Path) -> str
             else "<em>no text</em>"
         )
         replied_to = (
-            config.describe_user(int(message.replied_sender_id))
+            config.describe_user(int(message.replied_sender_id), target=target)
             if message.replied_sender_id is not None
             else "unknown user"
         )
@@ -118,7 +128,7 @@ def _render_message(message: DbMessage, config: Config, report_dir: Path) -> str
     regular_media = [media for media in message.media if not media.is_reply]
     media_block = _render_media_gallery(regular_media, report_dir)
     local_ts = _format_timestamp(message.date, config.reporting.timezone)
-    msg_link = build_message_link(config.target.target_chat_id, message.message_id)
+    msg_link = build_message_link(message.chat_id, message.message_id)
     msg_label = f"MSG {message.message_id}"
     if msg_link:
         msg_label = f'<a href="{escape(msg_link)}" target="_blank">{escape(msg_label)}</a>'

@@ -209,6 +209,7 @@ __marimo__/
 # --- tgwatch project-specific (secrets + local state) ---
 # real config with api_hash / chat ids
 config.toml
+config-old-*.toml
 
 # Telethon session files
 *.session
@@ -217,6 +218,10 @@ config.toml
 # local runtime outputs (db/media/reports/logs)
 data/
 reports/
+
+# local launcher install markers
+.conda-tgwatch-installed
+.venv/.tgwatch_installed
 logs/
 *.sqlite3
 *.db
@@ -229,3 +234,6 @@ docs/requests/*
 .DS_Store
 
 .vscode/
+
+# Codex local env
+.codex/environments/

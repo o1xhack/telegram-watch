@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from telegram_watch import storage
@@ -81,3 +81,127 @@ def test_reply_media_flag(tmp_path):
     storage.persist_message(conn, msg, reply_media)
     rows = storage.fetch_messages_between(conn, [999], now, now)
     assert rows[0].media[0].is_reply is True
+
+
+def test_fetch_summary_counts_filters_by_chat_id(tmp_path):
+    db_path = tmp_path / "tgwatch.sqlite3"
+    conn = storage.connect(db_path)
+    storage.ensure_schema(conn)
+
+    now = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    msg_a = storage.StoredMessage(
+        chat_id=1,
+        message_id=1,
+        sender_id=123,
+        date=now,
+        text="hello",
+        reply_to_msg_id=None,
+        replied_sender_id=None,
+        replied_date=None,
+        replied_text=None,
+    )
+    msg_b = storage.StoredMessage(
+        chat_id=2,
+        message_id=2,
+        sender_id=123,
+        date=now,
+        text="world",
+        reply_to_msg_id=None,
+        replied_sender_id=None,
+        replied_date=None,
+        replied_text=None,
+    )
+    storage.persist_message(conn, msg_a, [])
+    storage.persist_message(conn, msg_b, [])
+
+    since = now - timedelta(minutes=1)
+    counts = storage.fetch_summary_counts(
+        conn,
+        [123],
+        since,
+        chat_ids=[1],
+    )
+    assert counts == {123: 1}
+
+
+def test_fetch_messages_between_filters_by_chat_id(tmp_path):
+    db_path = tmp_path / "tgwatch.sqlite3"
+    conn = storage.connect(db_path)
+    storage.ensure_schema(conn)
+
+    now = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    msg_a = storage.StoredMessage(
+        chat_id=1,
+        message_id=1,
+        sender_id=123,
+        date=now,
+        text="hello",
+        reply_to_msg_id=None,
+        replied_sender_id=None,
+        replied_date=None,
+        replied_text=None,
+    )
+    msg_b = storage.StoredMessage(
+        chat_id=2,
+        message_id=2,
+        sender_id=123,
+        date=now,
+        text="world",
+        reply_to_msg_id=None,
+        replied_sender_id=None,
+        replied_date=None,
+        replied_text=None,
+    )
+    storage.persist_message(conn, msg_a, [])
+    storage.persist_message(conn, msg_b, [])
+
+    rows = storage.fetch_messages_between(
+        conn,
+        [123],
+        now - timedelta(minutes=1),
+        now + timedelta(minutes=1),
+        chat_ids=[1],
+    )
+    assert len(rows) == 1
+    assert rows[0].chat_id == 1
+
+
+def test_fetch_recent_messages_filters_by_chat_id(tmp_path):
+    db_path = tmp_path / "tgwatch.sqlite3"
+    conn = storage.connect(db_path)
+    storage.ensure_schema(conn)
+
+    now = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    msg_a = storage.StoredMessage(
+        chat_id=1,
+        message_id=1,
+        sender_id=123,
+        date=now,
+        text="hello",
+        reply_to_msg_id=None,
+        replied_sender_id=None,
+        replied_date=None,
+        replied_text=None,
+    )
+    msg_b = storage.StoredMessage(
+        chat_id=2,
+        message_id=2,
+        sender_id=123,
+        date=now,
+        text="world",
+        reply_to_msg_id=None,
+        replied_sender_id=None,
+        replied_date=None,
+        replied_text=None,
+    )
+    storage.persist_message(conn, msg_a, [])
+    storage.persist_message(conn, msg_b, [])
+
+    rows = storage.fetch_recent_messages(
+        conn,
+        123,
+        10,
+        chat_ids=[2],
+    )
+    assert len(rows) == 1
+    assert rows[0].chat_id == 2

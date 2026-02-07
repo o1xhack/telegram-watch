@@ -173,6 +173,8 @@ def fetch_messages_between(
     sender_ids: Iterable[int],
     since: datetime,
     until: datetime | None,
+    *,
+    chat_ids: Iterable[int] | None = None,
 ) -> list[DbMessage]:
     sender_ids = tuple(sender_ids)
     placeholders = ",".join("?" for _ in sender_ids)
@@ -183,8 +185,13 @@ def fetch_messages_between(
         SELECT *
         FROM messages
         WHERE sender_id IN ({senders})
-          AND date >= ?
     """
+    if chat_ids:
+        chat_ids = tuple(chat_ids)
+        chat_placeholders = ",".join("?" for _ in chat_ids)
+        query += f" AND chat_id IN ({chat_placeholders})"
+        params.extend(chat_ids)
+    query += " AND date >= ?"
     params.append(_serialize_dt(since))
     if until:
         query += " AND date <= ?"
@@ -200,16 +207,22 @@ def fetch_recent_messages(
     conn: sqlite3.Connection,
     sender_id: int,
     limit: int,
+    *,
+    chat_ids: Iterable[int] | None = None,
 ) -> list[DbMessage]:
-    rows = conn.execute(
-        """
+    params: list[object] = [sender_id]
+    query = """
         SELECT * FROM messages
         WHERE sender_id = ?
-        ORDER BY date DESC
-        LIMIT ?
-        """,
-        (sender_id, limit),
-    ).fetchall()
+    """
+    if chat_ids:
+        chat_ids = tuple(chat_ids)
+        placeholders = ",".join("?" for _ in chat_ids)
+        query += f" AND chat_id IN ({placeholders})"
+        params.extend(chat_ids)
+    query += " ORDER BY date DESC LIMIT ?"
+    params.append(limit)
+    rows = conn.execute(query, params).fetchall()
     messages = [_row_to_db_message(row) for row in rows]
     _attach_media(conn, messages)
     return list(reversed(messages))
@@ -219,23 +232,27 @@ def fetch_summary_counts(
     conn: sqlite3.Connection,
     sender_ids: Iterable[int],
     since: datetime,
+    *,
+    chat_ids: Iterable[int] | None = None,
 ) -> dict[int, int]:
     sender_ids = tuple(sender_ids)
     placeholders = ",".join("?" for _ in sender_ids)
     if not placeholders:
         return {}
     params: list[object] = list(sender_ids)
-    params.append(_serialize_dt(since))
-    rows = conn.execute(
-        f"""
+    query = f"""
         SELECT sender_id, COUNT(*) as cnt
         FROM messages
         WHERE sender_id IN ({placeholders})
-          AND date >= ?
-        GROUP BY sender_id
-        """,
-        params,
-    ).fetchall()
+    """
+    if chat_ids:
+        chat_ids = tuple(chat_ids)
+        chat_placeholders = ",".join("?" for _ in chat_ids)
+        query += f" AND chat_id IN ({chat_placeholders})"
+        params.extend(chat_ids)
+    query += " AND date >= ?\n        GROUP BY sender_id"
+    params.append(_serialize_dt(since))
+    rows = conn.execute(query, params).fetchall()
     return {int(row["sender_id"]): int(row["cnt"]) for row in rows}
 
 

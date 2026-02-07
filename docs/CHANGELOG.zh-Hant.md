@@ -4,6 +4,22 @@
 
 > 條目按時間由新到舊排列，最新版本在最上方。每條變更都會標註對應的需求編號。
 
+## 1.0.0 — 2026-02-04
+- 交付多目標監控與控制群路由，並提供本機 GUI 與控制群映射體驗優化（REQ-20260202-001-multi-admin-monitoring，REQ-20260203-001-config-gui-design，REQ-20260204-003-gui-control-mapping-ux）。
+- 新增一鍵啟動腳本與 GUI 執行控制（run/once、背景日誌、Stop GUI），並修復 GUI 啟動崩潰（REQ-20260203-002-gui-launcher-and-runner，REQ-20260204-001-gui-launcher-loglevel-fix，REQ-20260204-002-gui-stop-button）。
+- 強制 config_version = 1.0，按 target_chat_id + user_id 的 Topic 映射，並加入應用內遷移流程（REQ-20260204-004-topic-mapping-per-target，REQ-20260204-006-config-migration-flow）。
+- 補齊遷移與預設命名相關測試，並更新文件說明（REQ-20260205-001-audit-tests-docs）。
+- 簡化遷移流程，只保留 `config-old-0.1.toml` 備份（REQ-20260205-002-drop-config-sample）。
+- 新增 run once 單一目標過濾（CLI/GUI 可選單一群組）（REQ-20260205-003-once-target-filter）。
+- 將 `config-old-*.toml` 遷移備份加入 git 忽略（REQ-20260205-004-ignore-old-configs）。
+- GUI 增加 run once 推送開關與日誌顯示上限（REQ-20260205-005-gui-once-push-toggle）。
+- GUI 新增啟動前保護：缺少 session 時顯示醒目提示並禁用 Run/Once，`retention_days > 180` 改為介面確認，避免終端 y/n 卡住（REQ-20260205-006-gui-run-guards）。
+- 優化 GUI retention 互動：Run daemon 保持可點擊，點擊後進入確認流程（勾選後確認按鈕才可用）再啟動長保留執行（REQ-20260205-007-gui-retention-click-confirm-flow）。
+- GUI 新增 `Stop daemon` 控制，並修復 run 啟動後 retention 確認框不消失的問題，可直接在 Runner 面板管理 daemon 生命週期（REQ-20260205-008-gui-run-stop-and-confirm-dismiss）。
+- 在 push 前補強 GUI Runner 錯誤處理路徑，並同步 run/stop/retention 確認流程文件（REQ-20260205-009-pre-push-calibration-audit）。
+- 啟動腳本改為 Conda（`tgwatch`）優先並自動回退 venv，並同步多語系安裝文件（REQ-20260205-010-launcher-conda-prefer-fallback-venv）。
+- 增強啟動器穩健性：macOS 啟動器相容 bash，且安裝引導在 pip 工具升級失敗時會給出明確警告並繼續嘗試（REQ-20260205-011-launcher-shell-and-bootstrap-robustness）。
+
 ## 0.3.0 — 2026-01-29
 - 新增雙帳號橋接：由發送端帳號推送控制群訊息，使主帳號恢復通知（REQ-20260129-002-bridge-implementation）。
 - 雙帳號登入時補充主帳號/發送帳號提示，避免混淆（REQ-20260129-003-sender-login-prompt）。
