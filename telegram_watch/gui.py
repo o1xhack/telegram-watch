@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shlex
 import signal
 import subprocess
 import sys
@@ -1507,10 +1508,51 @@ class _RunnerManager:
         command = self._pid_command(pid)
         if not command:
             return False
-        config_tokens = {str(self.config_path), str(self.config_path.resolve()), self.config_path.name}
-        has_config = any(token in command for token in config_tokens)
-        has_run = "tgwatch run" in command or "-m tgwatch run" in command
+        argv = self._split_command(command)
+        if not argv:
+            return False
+        has_config = self._command_uses_config(argv)
+        has_run = self._command_is_tgwatch_run(argv)
         return has_run and has_config
+
+    def _split_command(self, command: str) -> list[str]:
+        try:
+            return shlex.split(command)
+        except ValueError:
+            return command.split()
+
+    def _command_is_tgwatch_run(self, argv: list[str]) -> bool:
+        if not argv:
+            return False
+        for idx, token in enumerate(argv):
+            if token == "-m" and idx + 2 < len(argv):
+                if argv[idx + 1] == "tgwatch" and argv[idx + 2] == "run":
+                    return True
+            if Path(token).name == "tgwatch" and idx + 1 < len(argv):
+                if argv[idx + 1] == "run":
+                    return True
+        return False
+
+    def _command_uses_config(self, argv: list[str]) -> bool:
+        expected = self.config_path.resolve()
+        for idx, token in enumerate(argv):
+            value: str | None = None
+            if token == "--config" and idx + 1 < len(argv):
+                value = argv[idx + 1]
+            elif token.startswith("--config="):
+                value = token.partition("=")[2]
+            if value is None:
+                continue
+            normalized = self._normalize_config_arg(value)
+            if normalized is not None and normalized == expected:
+                return True
+        return False
+
+    def _normalize_config_arg(self, value: str) -> Path | None:
+        path = Path(value).expanduser()
+        if not path.is_absolute():
+            return None
+        return path.resolve()
 
     def _pid_command(self, pid: int) -> str:
         try:
@@ -1712,19 +1754,27 @@ class _GuiHandler(BaseHTTPRequestHandler):
         logger.info("GUI %s - %s", self.address_string(), format % args)
 
     def _handle_get_config(self) -> None:
-        raw = _load_raw_config(self.server.config_path)
-        data = _normalize_config(raw)
-        errors = []
+        errors: list[str] = []
         locked = False
         lock_message = ""
+        try:
+            raw = _load_raw_config(self.server.config_path)
+        except ConfigError as exc:
+            raw = {}
+            message = str(exc)
+            errors.append(message)
+            locked = True
+            lock_message = message
+        data = _normalize_config(raw)
         if self.server.config_path.exists():
-            try:
-                load_config(self.server.config_path)
-            except ConfigError as exc:
-                message = str(exc)
-                errors.append(message)
-                locked = True
-                lock_message = message
+            if not lock_message:
+                try:
+                    load_config(self.server.config_path)
+                except ConfigError as exc:
+                    message = str(exc)
+                    errors.append(message)
+                    locked = True
+                    lock_message = message
         else:
             locked = True
             lock_message = (
@@ -1746,7 +1796,11 @@ class _GuiHandler(BaseHTTPRequestHandler):
         except ValueError:
             self._send_json(HTTPStatus.BAD_REQUEST, {"errors": ["Invalid JSON"]})
             return
-        raw_existing = _load_raw_config(self.server.config_path)
+        try:
+            raw_existing = _load_raw_config(self.server.config_path)
+        except ConfigError as exc:
+            self._send_json(HTTPStatus.BAD_REQUEST, {"errors": [str(exc)]})
+            return
         errors, normalized = _validate_payload(payload, raw_existing)
         if errors:
             self._send_json(
@@ -1846,8 +1900,11 @@ class _GuiHandler(BaseHTTPRequestHandler):
 def _load_raw_config(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
-    with path.open("rb") as fh:
-        return tomllib.load(fh)
+    try:
+        with path.open("rb") as fh:
+            return tomllib.load(fh)
+    except tomllib.TOMLDecodeError as exc:
+        raise ConfigError(f"Invalid TOML in {path.name}: {exc}") from exc
 
 
 def _normalize_config(raw: dict[str, Any]) -> dict[str, Any]:
@@ -2312,10 +2369,11 @@ def _render_toml(config: dict[str, Any], raw_existing: dict[str, Any]) -> str:
 
     for group in config["control_groups"]:
         key = group["key"]
+        quoted_key = toml_string(str(key))
         lines.extend(
             [
                 "",
-                f"[control_groups.{key}]",
+                f"[control_groups.{quoted_key}]",
                 f"control_chat_id = {group['control_chat_id']}",
                 f"is_forum = {toml_bool(group['is_forum'])}",
                 f"topic_routing_enabled = {toml_bool(group['topic_routing_enabled'])}",
@@ -2331,7 +2389,9 @@ def _render_toml(config: dict[str, Any], raw_existing: dict[str, Any]) -> str:
                 by_target.setdefault(int(target_id), []).append(entry)
             for target_id, entries in by_target.items():
                 lines.append("")
-                lines.append(f"[control_groups.{key}.topic_target_map.{toml_string(str(target_id))}]")
+                lines.append(
+                    f"[control_groups.{quoted_key}.topic_target_map.{toml_string(str(target_id))}]"
+                )
                 for entry in entries:
                     lines.append(f"{entry['user_id']} = {entry['topic_id']}")
 

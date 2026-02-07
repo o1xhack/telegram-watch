@@ -8,6 +8,66 @@ if [ -n "${VIRTUAL_ENV:-}" ]; then
   unset VIRTUAL_ENV
 fi
 
+GUI_HOST="${TGWATCH_GUI_HOST:-127.0.0.1}"
+GUI_PORT="${TGWATCH_GUI_PORT:-8765}"
+
+recover_gui_port() {
+  if ! command -v lsof >/dev/null 2>&1; then
+    echo "[tgwatch] Warning: lsof not found; skipping port recovery for ${GUI_PORT}."
+    return 0
+  fi
+
+  local pids=()
+  local pid
+  local cmd
+  while IFS= read -r pid; do
+    [ -n "${pid}" ] && pids+=("${pid}")
+  done <<EOF
+$(lsof -nP -t -iTCP:"${GUI_PORT}" -sTCP:LISTEN 2>/dev/null || true)
+EOF
+  if [ "${#pids[@]}" -eq 0 ]; then
+    return 0
+  fi
+
+  echo "[tgwatch] Port ${GUI_PORT} is in use. Attempting recovery..."
+  for pid in "${pids[@]}"; do
+    [ -z "${pid}" ] && continue
+    cmd="$(ps -p "${pid}" -o command= 2>/dev/null || true)"
+    echo "[tgwatch] Stopping PID ${pid}: ${cmd:-unknown}"
+    kill "${pid}" 2>/dev/null || true
+  done
+
+  for _ in {1..20}; do
+    if ! lsof -nP -iTCP:"${GUI_PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
+      echo "[tgwatch] Port ${GUI_PORT} recovered."
+      return 0
+    fi
+    sleep 0.1
+  done
+
+  pids=()
+  while IFS= read -r pid; do
+    [ -n "${pid}" ] && pids+=("${pid}")
+  done <<EOF
+$(lsof -nP -t -iTCP:"${GUI_PORT}" -sTCP:LISTEN 2>/dev/null || true)
+EOF
+  for pid in "${pids[@]}"; do
+    [ -z "${pid}" ] && continue
+    echo "[tgwatch] Force stopping PID ${pid}..."
+    kill -9 "${pid}" 2>/dev/null || true
+  done
+  sleep 0.2
+
+  if lsof -nP -iTCP:"${GUI_PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "[tgwatch] Error: port ${GUI_PORT} is still in use. Stop it manually and retry."
+    lsof -nP -iTCP:"${GUI_PORT}" -sTCP:LISTEN || true
+    return 1
+  fi
+
+  echo "[tgwatch] Port ${GUI_PORT} recovered."
+  return 0
+}
+
 USE_CONDA=0
 if command -v conda >/dev/null 2>&1; then
   if eval "$(conda shell.bash hook 2>/dev/null)"; then
@@ -84,4 +144,5 @@ if [ ! -f "config.toml" ]; then
   cp config.example.toml config.toml
 fi
 
-python -m tgwatch gui --config config.toml
+recover_gui_port
+python -m tgwatch gui --config config.toml --host "${GUI_HOST}" --port "${GUI_PORT}"

@@ -5,6 +5,16 @@ cd /d "%~dp0"
 
 set "USE_CONDA=0"
 set "PY_CMD="
+if "%TGWATCH_GUI_HOST%"=="" (
+  set "GUI_HOST=127.0.0.1"
+) else (
+  set "GUI_HOST=%TGWATCH_GUI_HOST%"
+)
+if "%TGWATCH_GUI_PORT%"=="" (
+  set "GUI_PORT=8765"
+) else (
+  set "GUI_PORT=%TGWATCH_GUI_PORT%"
+)
 
 where conda >nul 2>&1
 if %errorlevel% == 0 (
@@ -83,6 +93,39 @@ if not exist "config.toml" (
   copy /y config.example.toml config.toml >nul
 )
 
-%PY_CMD% -m tgwatch gui --config config.toml
+call :recover_gui_port
+if errorlevel 1 exit /b 1
+
+%PY_CMD% -m tgwatch gui --config config.toml --host %GUI_HOST% --port %GUI_PORT%
 
 endlocal
+exit /b 0
+
+:recover_gui_port
+setlocal EnableDelayedExpansion
+set "PIDS="
+for /f "tokens=5" %%P in ('netstat -ano -p tcp ^| findstr /r /c:":%GUI_PORT% .*LISTENING"') do (
+  echo !PIDS! | findstr /w "%%P" >nul || set "PIDS=!PIDS! %%P"
+)
+if "!PIDS!"=="" (
+  endlocal & exit /b 0
+)
+
+echo [tgwatch] Port %GUI_PORT% is in use. Attempting recovery...
+for %%P in (!PIDS!) do (
+  set "PROC=unknown"
+  for /f "tokens=1,* delims=:" %%A in ('tasklist /fi "PID eq %%P" /fo list ^| findstr /b /c:"Image Name:"') do (
+    set "PROC=%%B"
+  )
+  echo [tgwatch] Stopping PID %%P!PROC!
+  taskkill /PID %%P /T /F >nul 2>&1
+)
+
+timeout /t 1 /nobreak >nul
+for /f "tokens=5" %%P in ('netstat -ano -p tcp ^| findstr /r /c:":%GUI_PORT% .*LISTENING"') do (
+  echo [tgwatch] Error: port %GUI_PORT% is still in use by PID %%P.
+  endlocal & exit /b 1
+)
+
+echo [tgwatch] Port %GUI_PORT% recovered.
+endlocal & exit /b 0

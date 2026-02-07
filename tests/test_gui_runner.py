@@ -3,7 +3,15 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from telegram_watch.gui import _RunnerManager, _validate_payload
+import pytest
+
+from telegram_watch.config import ConfigError
+from telegram_watch.gui import _RunnerManager, _load_raw_config, _render_toml, _validate_payload
+
+try:  # pragma: no cover - Python 3.11+ uses tomllib
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover
+    import tomli as tomllib  # type: ignore
 
 
 def _manager(tmp_path: Path) -> _RunnerManager:
@@ -102,6 +110,40 @@ def test_current_run_clears_pid_when_process_identity_mismatch(monkeypatch, tmp_
     assert not manager.run_pid_path.exists()
 
 
+def test_pid_match_rejects_basename_only_config(monkeypatch, tmp_path: Path) -> None:
+    manager = _manager(tmp_path)
+    monkeypatch.setattr(
+        manager,
+        "_pid_command",
+        lambda _pid: "python -m tgwatch run --config config.toml --yes-retention",
+    )
+
+    assert manager._pid_matches_run_daemon(12345) is False
+
+
+def test_pid_match_accepts_exact_absolute_config(monkeypatch, tmp_path: Path) -> None:
+    manager = _manager(tmp_path)
+    config_arg = str(manager.config_path.resolve())
+    monkeypatch.setattr(
+        manager,
+        "_pid_command",
+        lambda _pid: f"python -m tgwatch run --config {config_arg} --yes-retention",
+    )
+
+    assert manager._pid_matches_run_daemon(12345) is True
+
+
+def test_pid_match_rejects_relative_config_path(monkeypatch, tmp_path: Path) -> None:
+    manager = _manager(tmp_path)
+    monkeypatch.setattr(
+        manager,
+        "_pid_command",
+        lambda _pid: "python -m tgwatch run --config ./config.toml --yes-retention",
+    )
+
+    assert manager._pid_matches_run_daemon(12345) is False
+
+
 def test_validate_payload_skips_topic_map_errors_when_routing_disabled() -> None:
     payload = {
         "telegram": {"api_id": "42", "api_hash": "abcdefghijk", "session_file": "data/tgwatch.session"},
@@ -139,3 +181,56 @@ def test_validate_payload_skips_topic_map_errors_when_routing_disabled() -> None
 
     assert not errors
     assert normalized["control_groups"][0]["topic_target_map"] == []
+
+
+def test_load_raw_config_reports_invalid_toml(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text("[telegram\napi_id = 42\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="Invalid TOML"):
+        _load_raw_config(config_path)
+
+
+def test_render_toml_quotes_control_group_key() -> None:
+    normalized = {
+        "config_version": 1.0,
+        "telegram": {"api_id": 42, "api_hash": "abcdefghijk", "session_file": "data/tgwatch.session"},
+        "sender": {"enabled": False, "session_file": ""},
+        "targets": [
+            {
+                "name": "group-1",
+                "target_chat_id": -1001,
+                "tracked_user_ids": [123],
+                "tracked_user_aliases": {},
+                "summary_interval_minutes": None,
+                "control_group": "main group",
+            }
+        ],
+        "control_groups": [
+            {
+                "key": "main group",
+                "control_chat_id": -2001,
+                "is_forum": True,
+                "topic_routing_enabled": True,
+                "topic_target_map": [
+                    {"target_chat_id": -1001, "user_id": 123, "topic_id": 9001, "user_key": ""}
+                ],
+            }
+        ],
+        "storage": {"db_path": "data/tgwatch.sqlite3", "media_dir": "data/media"},
+        "reporting": {
+            "reports_dir": "reports",
+            "summary_interval_minutes": 120,
+            "timezone": "UTC",
+            "retention_days": 30,
+        },
+        "display": {"show_ids": True, "time_format": "%Y.%m.%d %H:%M:%S (%Z)"},
+        "notifications": {"bark_key": ""},
+    }
+
+    toml_text = _render_toml(normalized, {})
+    parsed = tomllib.loads(toml_text)
+
+    assert '[control_groups."main group"]' in toml_text
+    assert parsed["control_groups"]["main group"]["control_chat_id"] == -2001
+    assert parsed["control_groups"]["main group"]["topic_target_map"]["-1001"]["123"] == 9001

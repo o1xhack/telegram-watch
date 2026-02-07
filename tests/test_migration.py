@@ -131,3 +131,26 @@ def test_migrate_config_preserves_multiple_control_groups(tmp_path: Path) -> Non
     assert data["control_groups"]["alt"]["control_chat_id"] == -2002
     assert data["control_groups"]["main"]["topic_target_map"]["-1001"]["123"] == 901
     assert data["control_groups"]["alt"]["topic_target_map"]["-1002"]["456"] == 902
+
+
+def test_migrate_config_keeps_existing_backup_file(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    original = dedent(
+        """
+        [telegram]
+        api_id = 42
+        api_hash = "abcdefghijk"
+        """
+    ).lstrip()
+    config_path.write_text(original, encoding="utf-8")
+
+    existing_backup = tmp_path / CONFIG_BACKUP_NAME
+    existing_backup.write_text("old-backup", encoding="utf-8")
+
+    result = migrate_config(config_path)
+
+    assert result.ok is True
+    assert result.backup_path is not None
+    assert result.backup_path.name == "config-old-0.1-1.toml"
+    assert existing_backup.read_text(encoding="utf-8") == "old-backup"
+    assert result.backup_path.read_text(encoding="utf-8") == original

@@ -218,6 +218,10 @@ config-old-*.toml
 # local runtime outputs (db/media/reports/logs)
 data/
 reports/
+
+# local launcher install markers
+.conda-tgwatch-installed
+.venv/.tgwatch_installed
 logs/
 *.sqlite3
 *.db

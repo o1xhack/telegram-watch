@@ -45,7 +45,7 @@ def migrate_config(config_path: Path) -> MigrationResult:
     if not config_path.exists():
         return MigrationResult(False, "config.toml not found")
 
-    backup_path = config_path.with_name(CONFIG_BACKUP_NAME)
+    backup_path = _next_backup_path(config_path)
 
     raw = {}
     raw_status = None
@@ -65,6 +65,20 @@ def migrate_config(config_path: Path) -> MigrationResult:
     if raw_status:
         status = raw_status
     return MigrationResult(True, status, backup_path=backup_path)
+
+
+def _next_backup_path(config_path: Path) -> Path:
+    backup_path = config_path.with_name(CONFIG_BACKUP_NAME)
+    if not backup_path.exists():
+        return backup_path
+    stem = backup_path.stem
+    suffix = backup_path.suffix
+    index = 1
+    while True:
+        candidate = backup_path.with_name(f"{stem}-{index}{suffix}")
+        if not candidate.exists():
+            return candidate
+        index += 1
 
 
 def _read_raw(path: Path) -> dict[str, Any]:
