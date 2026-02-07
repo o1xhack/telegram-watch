@@ -1611,8 +1611,6 @@ class _RunnerManager:
     def _session_ready(self, config: Any) -> tuple[bool, str | None]:
         if not config.telegram.session_file.exists():
             return False, "Session file not found. Run `python -m tgwatch run --config ...` once in a terminal."
-        if config.sender and not config.sender.session_file.exists():
-            return False, "Sender session file not found. Run `python -m tgwatch run --config ...` once in a terminal."
         return True, None
 
     def _retention_confirm_required(self, config: Any) -> bool:

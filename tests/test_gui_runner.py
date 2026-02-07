@@ -54,6 +54,61 @@ def test_start_run_passes_yes_retention_to_cli(monkeypatch, tmp_path: Path) -> N
     assert "--yes-retention" in captured_args
 
 
+def test_session_ready_requires_primary_session(tmp_path: Path) -> None:
+    manager = _manager(tmp_path)
+    config = SimpleNamespace(
+        telegram=SimpleNamespace(session_file=tmp_path / "primary.session"),
+        sender=None,
+    )
+
+    ready, message = manager._session_ready(config)
+
+    assert ready is False
+    assert "Session file not found" in (message or "")
+
+
+def test_session_ready_allows_missing_sender_session(tmp_path: Path) -> None:
+    manager = _manager(tmp_path)
+    primary = tmp_path / "primary.session"
+    primary.write_text("", encoding="utf-8")
+    config = SimpleNamespace(
+        telegram=SimpleNamespace(session_file=primary),
+        sender=SimpleNamespace(session_file=tmp_path / "sender.session"),
+    )
+
+    ready, message = manager._session_ready(config)
+
+    assert ready is True
+    assert message is None
+
+
+def test_start_once_allows_missing_sender_session(monkeypatch, tmp_path: Path) -> None:
+    manager = _manager(tmp_path)
+    primary = tmp_path / "primary.session"
+    primary.write_text("", encoding="utf-8")
+    config = SimpleNamespace(
+        telegram=SimpleNamespace(session_file=primary),
+        sender=SimpleNamespace(session_file=tmp_path / "sender.session"),
+        target_by_name={},
+        target_by_chat_id={},
+    )
+    captured_args: list[str] = []
+
+    monkeypatch.setattr(manager, "_load_config", lambda: (config, None))
+    monkeypatch.setattr(manager, "_write_log_header", lambda *_args, **_kwargs: None)
+
+    def fake_spawn(args, *, log_path):
+        captured_args.extend(args)
+        return SimpleNamespace(pid=10001)
+
+    monkeypatch.setattr(manager, "_spawn_process", fake_spawn)
+
+    payload = manager.start_once("2h", push=False)
+
+    assert payload["ok"] is True
+    assert "--push" not in captured_args
+
+
 def test_stop_run_no_active_process(monkeypatch, tmp_path: Path) -> None:
     manager = _manager(tmp_path)
     monkeypatch.setattr(manager, "_current_run", lambda: (False, None))

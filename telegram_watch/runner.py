@@ -111,10 +111,12 @@ async def run_once(
                 chat_ids=[target.target_chat_id],
             )
     report_paths: list[Path] = []
-    multi_target_once = len(targets) > 1
+    # Keep per-target filenames when config contains multiple targets,
+    # even for `once --target ...`, to avoid same-minute overwrites.
+    multi_target_config = len(config.targets) > 1
     for target in targets:
         report_name = "index.html"
-        if multi_target_once:
+        if multi_target_config:
             report_name = f"index_{target.target_chat_id}.html"
         report_path = generate_report(
             stored_by_target.get(target.name, []),

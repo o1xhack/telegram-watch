@@ -255,6 +255,87 @@ async def test_run_once_multi_target_generates_unique_report_files(monkeypatch, 
 
 
 @pytest.mark.asyncio
+async def test_run_once_selected_target_in_multi_target_config_uses_scoped_filename(
+    monkeypatch, tmp_path: Path
+):
+    config = build_multi_target_config(tmp_path)
+    since = datetime.now(timezone.utc) - timedelta(hours=1)
+
+    class DummyClient:
+        async def disconnect(self) -> None:
+            return None
+
+    @contextmanager
+    def fake_db_session(_path: Path):
+        yield object()
+
+    async def fake_start_client(_client, _role):
+        return None
+
+    async def fake_collect_window(_client, _config, _target, _since):
+        return []
+
+    def fake_fetch_messages_between(_conn, _ids, _since, _until, **_kwargs):
+        return []
+
+    def fake_generate_report(_messages, _config, _since, _until, **kwargs):
+        return kwargs["report_dir"] / kwargs["report_name"]
+
+    monkeypatch.setattr(runner, "_build_client", lambda _config: DummyClient())
+    monkeypatch.setattr(runner, "_start_client", fake_start_client)
+    monkeypatch.setattr(runner, "_collect_window", fake_collect_window)
+    monkeypatch.setattr(runner, "db_session", fake_db_session)
+    monkeypatch.setattr(runner, "persist_message", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(runner, "fetch_messages_between", fake_fetch_messages_between)
+    monkeypatch.setattr(runner, "generate_report", fake_generate_report)
+
+    selected = str(config.targets[0].target_chat_id)
+    report_paths = await runner.run_once(config, since, push=False, target_selector=selected)
+
+    assert len(report_paths) == 1
+    assert report_paths[0].name == "index_-1001.html"
+
+
+@pytest.mark.asyncio
+async def test_run_once_single_target_config_keeps_index_html(monkeypatch, tmp_path: Path):
+    config = build_config(tmp_path)
+    since = datetime.now(timezone.utc) - timedelta(hours=1)
+
+    class DummyClient:
+        async def disconnect(self) -> None:
+            return None
+
+    @contextmanager
+    def fake_db_session(_path: Path):
+        yield object()
+
+    async def fake_start_client(_client, _role):
+        return None
+
+    async def fake_collect_window(_client, _config, _target, _since):
+        return []
+
+    def fake_fetch_messages_between(_conn, _ids, _since, _until, **_kwargs):
+        return []
+
+    def fake_generate_report(_messages, _config, _since, _until, **kwargs):
+        return kwargs["report_dir"] / kwargs["report_name"]
+
+    monkeypatch.setattr(runner, "_build_client", lambda _config: DummyClient())
+    monkeypatch.setattr(runner, "_start_client", fake_start_client)
+    monkeypatch.setattr(runner, "_collect_window", fake_collect_window)
+    monkeypatch.setattr(runner, "db_session", fake_db_session)
+    monkeypatch.setattr(runner, "persist_message", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(runner, "fetch_messages_between", fake_fetch_messages_between)
+    monkeypatch.setattr(runner, "generate_report", fake_generate_report)
+
+    report_paths = await runner.run_once(config, since, push=False, target_selector=str(config.targets[0].target_chat_id))
+
+    assert len(report_paths) == 1
+    assert report_paths[0].name == "index.html"
+
+
+@pytest.mark.asyncio
 async def test_reply_media_caption_uses_target_scoped_alias(monkeypatch, tmp_path: Path):
     telegram = TelegramConfig(api_id=1, api_hash="abcdefghijk", session_file=tmp_path / "session")
     target_a = TargetGroupConfig(
