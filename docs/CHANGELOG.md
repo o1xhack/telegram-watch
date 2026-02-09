@@ -5,6 +5,7 @@
 > Entries are arranged from newest to oldest so the latest release notes stay at the top. Each bullet references the requirement(s) that introduced the change.
 
 ## 1.0.0 — 2026-02-04
+- Published the `v1.0.0` git tag and synchronized README install examples across all locales to point to `@v1.0.0` (REQ-20260208-001-release-tag-100-readme-sync).
 - Shipped multi-target monitoring with control-group routing and a local GUI, including improved control-group mapping UX (REQ-20260202-001-multi-admin-monitoring, REQ-20260203-001-config-gui-design, REQ-20260204-003-gui-control-mapping-ux).
 - Added one-click launchers and GUI runner controls (run/once, background logs, Stop GUI), plus fixed a GUI startup crash (REQ-20260203-002-gui-launcher-and-runner, REQ-20260204-001-gui-launcher-loglevel-fix, REQ-20260204-002-gui-stop-button).
 - Enforced config version 1.0 with per-target topic mapping (target_chat_id + user_id) and an in-app migration flow (REQ-20260204-004-topic-mapping-per-target, REQ-20260204-006-config-migration-flow).
