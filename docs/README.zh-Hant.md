@@ -44,7 +44,7 @@
 > 只想執行 `tgwatch` 並固定版本時使用。
 
 ```bash
-pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.3.1"
+pip install "git+https://github.com/o1xhack/telegram-watch.git@v1.0.0"
 python -m tgwatch --help
 ```
 

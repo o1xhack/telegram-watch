@@ -45,7 +45,7 @@ This project is not published as a PyPI package yet, so installation is done via
 > Use this if you just want to run `tgwatch` and keep your version pinned to a release tag.
 
 ```bash
-pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.3.1"
+pip install "git+https://github.com/o1xhack/telegram-watch.git@v1.0.0"
 python -m tgwatch --help
 ```
 

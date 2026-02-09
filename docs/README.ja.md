@@ -44,7 +44,7 @@ PyPI 未公開のため、Git からのインストール（タグ）または�
 > `tgwatch` を動かすだけならこちら。
 
 ```bash
-pip install "git+https://github.com/o1xhack/telegram-watch.git@v0.3.1"
+pip install "git+https://github.com/o1xhack/telegram-watch.git@v1.0.0"
 python -m tgwatch --help
 ```
 
