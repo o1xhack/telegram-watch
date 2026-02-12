@@ -716,7 +716,17 @@ class _SummaryLoop:
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=interval)
             except asyncio.TimeoutError:
-                await self._send_summary()
+                try:
+                    await self._send_summary()
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.exception(
+                        "Summary send failed for target '%s' (chat_id=%s); "
+                        "will continue next interval.",
+                        self.target.name,
+                        self.target.target_chat_id,
+                    )
             except asyncio.CancelledError:
                 break
 

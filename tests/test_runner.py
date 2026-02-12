@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from datetime import datetime, timedelta, timezone
+import logging
 from pathlib import Path
 from types import MappingProxyType
 
@@ -574,3 +575,26 @@ async def test_summary_loop_passes_tracker_and_bark_context(monkeypatch, tmp_pat
     assert captured["tracker"] is tracker
     assert captured["bark_context"] == "(2H)"
     assert captured_report_name["report_name"] == "index_-123.html"
+
+
+@pytest.mark.asyncio
+async def test_summary_loop_continues_after_send_exception(monkeypatch, tmp_path: Path, caplog):
+    config = build_config(tmp_path)
+    target = config.targets[0]
+    control = config.control_groups["default"]
+    tracker = runner._ActivityTracker()
+
+    # Force immediate timeout so _run enters the summary path without waiting.
+    object.__setattr__(target, "summary_interval_minutes", 0)
+    loop = runner._SummaryLoop(config, target, control, client=object(), tracker=tracker)
+
+    async def fake_send_summary() -> None:
+        loop._stop.set()
+        raise RuntimeError("send failed")
+
+    monkeypatch.setattr(loop, "_send_summary", fake_send_summary)
+
+    with caplog.at_level(logging.ERROR):
+        await loop._run()
+
+    assert "Summary send failed for target 'default' (chat_id=-123)" in caplog.text
