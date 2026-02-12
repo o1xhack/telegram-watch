@@ -205,3 +205,68 @@ def test_fetch_recent_messages_filters_by_chat_id(tmp_path):
     )
     assert len(rows) == 1
     assert rows[0].chat_id == 2
+
+
+def test_reply_snapshot_candidate_and_cleanup(tmp_path):
+    db_path = tmp_path / "tgwatch.sqlite3"
+    conn = storage.connect(db_path)
+    storage.ensure_schema(conn)
+
+    now = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    msg = storage.StoredMessage(
+        chat_id=1,
+        message_id=9,
+        sender_id=321,
+        date=now,
+        text="topic linkage",
+        reply_to_msg_id=100,
+        replied_sender_id=777,
+        replied_date=now,
+        replied_text="quoted",
+    )
+    media_file = tmp_path / "media" / "payload.jpg"
+    media_file.parent.mkdir(exist_ok=True)
+    media_file.write_bytes(b"123")
+    media = [
+        storage.StoredMedia(
+            chat_id=1,
+            message_id=9,
+            file_path=str(media_file),
+            mime_type="image/jpeg",
+            file_size=3,
+            media_index=0,
+            is_reply=False,
+        ),
+        storage.StoredMedia(
+            chat_id=1,
+            message_id=9,
+            file_path=str(media_file),
+            mime_type="image/jpeg",
+            file_size=3,
+            media_index=1,
+            is_reply=True,
+        ),
+    ]
+    storage.persist_message(conn, msg, media)
+
+    candidates = storage.fetch_reply_snapshot_candidates(conn)
+    assert candidates == [(1, 9)]
+
+    cleared_messages, cleared_media = storage.clear_reply_snapshots(conn, candidates)
+    assert cleared_messages == 1
+    assert cleared_media == 1
+
+    rows = storage.fetch_messages_between(
+        conn,
+        [321],
+        now - timedelta(minutes=1),
+        now + timedelta(minutes=1),
+    )
+    assert len(rows) == 1
+    cleaned = rows[0]
+    assert cleaned.reply_to_msg_id == 100
+    assert cleaned.replied_sender_id is None
+    assert cleaned.replied_date is None
+    assert cleaned.replied_text is None
+    assert len(cleaned.media) == 1
+    assert cleaned.media[0].is_reply is False

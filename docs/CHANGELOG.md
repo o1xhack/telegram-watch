@@ -4,6 +4,12 @@
 
 > Entries are arranged from newest to oldest so the latest release notes stay at the top. Each bullet references the requirement(s) that introduced the change.
 
+## 1.0.3 — 2026-02-12
+- Added a one-time `cleanup-replies` workflow to scan forum targets, remove false historical reply snapshots caused by topic linkage, preserve true explicit replies, and emit dry-run/apply stats with optional DB backup (REQ-20260212-003-historical-reply-backfill-cleanup).
+
+## 1.0.2 — 2026-02-12
+- Improved forum reply detection so topic-linkage messages are no longer mislabeled as `Reply to`, while explicit replies in topics and non-forum reply behavior remain intact with new regression tests (REQ-20260212-002-forum-topic-reply-disambiguation).
+
 ## 1.0.1 — 2026-02-11
 - Hardened summary-loop resilience: transient send failures no longer terminate periodic summary scheduling, and added regression coverage to keep the loop alive after send errors (REQ-20260211-001-summary-loop-resilience).
 

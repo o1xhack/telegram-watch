@@ -13,7 +13,7 @@ from .config import Config, ConfigError, load_config
 from .migration import detect_migration_needed, migrate_config
 from .doctor import run_doctor
 from .gui import run_gui
-from .runner import run_daemon, run_once
+from .runner import run_daemon, run_once, run_reply_cleanup
 from .timeutils import parse_since_spec, utc_now
 
 
@@ -71,6 +71,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--yes-retention",
         action="store_true",
         help=argparse.SUPPRESS,
+    )
+    cleanup_parser = subparsers.add_parser(
+        "cleanup-replies",
+        help="One-time cleanup for historical false reply snapshots",
+        parents=[common],
+    )
+    cleanup_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply changes to the database (default: dry-run)",
+    )
+    cleanup_parser.add_argument(
+        "--no-backup",
+        action="store_true",
+        help="Skip DB backup before apply (use with caution)",
     )
 
     gui_parser = subparsers.add_parser(
@@ -136,6 +151,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             logging.getLogger(__name__).warning("Run cancelled by user.")
             return 1
         return asyncio.run(_run_daemon_command(config))
+    elif args.command == "cleanup-replies":
+        config = _load_config_or_exit(parser, args.config, command=args.command)
+        return asyncio.run(
+            _run_cleanup_replies_command(
+                config,
+                apply=bool(args.apply),
+                backup=not bool(args.no_backup),
+            )
+        )
     elif args.command == "gui":
         run_gui(args.config, host=args.host, port=args.port)
         return 0
@@ -208,6 +232,37 @@ async def _run_once_command(
 
 async def _run_daemon_command(config):
     await run_daemon(config)
+    return 0
+
+
+async def _run_cleanup_replies_command(
+    config: Config,
+    *,
+    apply: bool,
+    backup: bool,
+) -> int:
+    stats = await run_reply_cleanup(config, apply=apply, backup=backup)
+    action_word = "will be cleaned" if not apply else "cleaned"
+    Console().print(
+        "\n".join(
+            [
+                f"Scanned: {stats.scanned}",
+                f"Skipped (non-forum): {stats.skipped_non_forum}",
+                f"Kept (explicit reply): {stats.kept_explicit_reply}",
+                f"Missing from Telegram: {stats.missing_messages}",
+                f"Candidates that {action_word}: {stats.to_clear}",
+                f"Cleared messages: {stats.cleared_messages}",
+                f"Cleared reply media rows: {stats.cleared_media}",
+                (
+                    f"Backup: {stats.backup_path}"
+                    if stats.backup_path
+                    else "Backup: not created"
+                ),
+            ]
+        )
+    )
+    if not apply:
+        Console().print("Dry-run only. Re-run with --apply to persist changes.")
     return 0
 
 
