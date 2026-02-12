@@ -36,8 +36,8 @@ Created: YYYY-MM-DD  # 与文件名中的日期一致
 - [ ] 性能/频率：例如每 2 小时汇总
 
 ## Acceptance Criteria (DoD)
-- [ ] 通过 `python -m telegram_watch doctor --config config.toml`
-- [ ] 通过 `python -m telegram_watch once --config config.toml --since 10m`
+- [ ] 通过 `python -m tgwatch doctor --config config.toml`
+- [ ] 通过 `python -m tgwatch once --config config.toml --since 10m`
 - [ ] 生成报告且图片可显示（相对路径正确）
 - [ ] 控制对话指令可用（如 /last /since /export）
 

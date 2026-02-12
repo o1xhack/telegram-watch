@@ -19,7 +19,7 @@ from .timeutils import parse_since_spec, utc_now
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="telegram_watch",
+        prog="tgwatch",
         description="Telegram user watcher",
     )
     common = argparse.ArgumentParser(add_help=False)
