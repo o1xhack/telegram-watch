@@ -2,7 +2,7 @@
 
 [English](../README.md) | [简体中文](README.zh-Hans.md) | [繁體中文](README.zh-Hant.md) | [日本語](README.ja.md)
 
-**文件版本：** `v1.0.0`
+**文件版本：** `v1.0.4`
 
 追蹤： [X/Twitter](https://x.com/o1xhack) · [Telegram 英文頻道](https://t.me/lalabeng) · [Telegram 中文頻道](https://t.me/o1xinsight)
 
@@ -44,7 +44,7 @@
 > 只想執行 `tgwatch` 並固定版本時使用。
 
 ```bash
-pip install "git+https://github.com/o1xhack/telegram-watch.git@v1.0.0"
+pip install "git+https://github.com/o1xhack/telegram-watch.git@v1.0.4"
 python -m tgwatch --help
 ```
 

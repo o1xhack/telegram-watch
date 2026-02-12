@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](docs/README.zh-Hans.md) | [繁體中文](docs/README.zh-Hant.md) | [日本語](docs/README.ja.md)
 
-**Docs Version:** `v1.0.0`
+**Docs Version:** `v1.0.4`
 
 [Follow on X](https://x.com/o1xhack) · [Telegram EN channel](https://t.me/lalabeng) · [Telegram 中文频道](https://t.me/o1xinsight)
 
@@ -45,7 +45,7 @@ This project is not published as a PyPI package yet, so installation is done via
 > Use this if you just want to run `tgwatch` and keep your version pinned to a release tag.
 
 ```bash
-pip install "git+https://github.com/o1xhack/telegram-watch.git@v1.0.0"
+pip install "git+https://github.com/o1xhack/telegram-watch.git@v1.0.4"
 python -m tgwatch --help
 ```
 
