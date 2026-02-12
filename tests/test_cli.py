@@ -9,6 +9,7 @@ def test_confirm_retention_auto_confirm_bypasses_prompt() -> None:
 
 def test_cleanup_replies_parser_defaults() -> None:
     parser = build_parser()
+    assert parser.prog == "tgwatch"
     args = parser.parse_args(["cleanup-replies", "--config", "config.toml"])
     assert args.command == "cleanup-replies"
     assert args.apply is False
