@@ -28,7 +28,9 @@ from .storage import (
     DbMessage,
     StoredMedia,
     StoredMessage,
+    clear_reply_snapshots,
     db_session,
+    fetch_reply_snapshot_candidates,
     fetch_messages_between,
     fetch_recent_messages,
     fetch_summary_counts,
@@ -37,6 +39,18 @@ from .storage import (
 from .timeutils import parse_since_spec, utc_now
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ReplyCleanupStats:
+    scanned: int = 0
+    skipped_non_forum: int = 0
+    kept_explicit_reply: int = 0
+    missing_messages: int = 0
+    to_clear: int = 0
+    cleared_messages: int = 0
+    cleared_media: int = 0
+    backup_path: Path | None = None
 
 
 def _role_label(role: str) -> str:
@@ -170,6 +184,72 @@ async def run_once(
         finally:
             await send_client.disconnect()
     return report_paths
+
+
+async def run_reply_cleanup(
+    config: Config,
+    *,
+    apply: bool = False,
+    backup: bool = True,
+) -> ReplyCleanupStats:
+    stats = ReplyCleanupStats()
+    target_chat_ids = tuple(target.target_chat_id for target in config.targets)
+    with db_session(config.storage.db_path) as conn:
+        candidates = fetch_reply_snapshot_candidates(conn, chat_ids=target_chat_ids)
+    if not candidates:
+        return stats
+
+    candidates_by_chat: dict[int, list[int]] = {}
+    for chat_id, message_id in candidates:
+        candidates_by_chat.setdefault(chat_id, []).append(message_id)
+
+    client = _build_client(config)
+    await _start_client(client, "primary")
+    to_clear: list[tuple[int, int]] = []
+    try:
+        for target in config.targets:
+            chat_id = target.target_chat_id
+            message_ids = candidates_by_chat.get(chat_id, [])
+            if not message_ids:
+                continue
+            chat_entity = await _with_floodwait(client.get_entity, chat_id)
+            if not bool(getattr(chat_entity, "forum", False)):
+                stats.scanned += len(message_ids)
+                stats.skipped_non_forum += len(message_ids)
+                continue
+            for start in range(0, len(message_ids), 100):
+                batch = message_ids[start : start + 100]
+                msgs = await _with_floodwait(client.get_messages, chat_id, ids=batch)
+                msg_map = {int(msg.id): msg for msg in msgs if msg is not None}
+                for message_id in batch:
+                    stats.scanned += 1
+                    live_message = msg_map.get(message_id)
+                    if live_message is None:
+                        stats.missing_messages += 1
+                        continue
+                    if _is_explicit_reply(live_message):
+                        stats.kept_explicit_reply += 1
+                        continue
+                    to_clear.append((chat_id, message_id))
+    finally:
+        await client.disconnect()
+
+    stats.to_clear = len(to_clear)
+    if not apply or not to_clear:
+        return stats
+    if backup:
+        timestamp = utc_now().strftime("%Y%m%d%H%M%S")
+        backup_path = config.storage.db_path.with_suffix(
+            f"{config.storage.db_path.suffix}.bak.{timestamp}"
+        )
+        backup_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(config.storage.db_path, backup_path)
+        stats.backup_path = backup_path
+    with db_session(config.storage.db_path) as conn:
+        cleared_messages, cleared_media = clear_reply_snapshots(conn, to_clear)
+    stats.cleared_messages = cleared_messages
+    stats.cleared_media = cleared_media
+    return stats
 
 
 async def run_daemon(config: Config) -> None:
@@ -345,13 +425,29 @@ class ReplySnapshot:
     media: list[StoredMedia]
 
 
+def _is_explicit_reply(message: custom_message.Message) -> bool:
+    """Return True when a message semantically replies to another message."""
+    if not message.is_reply:
+        return False
+    reply_header = getattr(message, "reply_to", None)
+    if reply_header is None:
+        return True
+    if not bool(getattr(reply_header, "forum_topic", False)):
+        return True
+    if bool(getattr(reply_header, "quote", False)):
+        return True
+    # Forum topic posts may carry a synthetic "reply" to the topic root.
+    # Treat those as topic linkage instead of explicit user replies.
+    return getattr(reply_header, "reply_to_top_id", None) is not None
+
+
 async def _get_reply_snapshot(
     client: TelegramClient,
     media_dir: Path,
     message: custom_message.Message,
     chat_id: int,
 ) -> ReplySnapshot | None:
-    if not message.is_reply:
+    if not _is_explicit_reply(message):
         return None
     try:
         reply = await _with_floodwait(message.get_reply_message)
@@ -716,7 +812,17 @@ class _SummaryLoop:
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=interval)
             except asyncio.TimeoutError:
-                await self._send_summary()
+                try:
+                    await self._send_summary()
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.exception(
+                        "Summary send failed for target '%s' (chat_id=%s); "
+                        "will continue next interval.",
+                        self.target.name,
+                        self.target.target_chat_id,
+                    )
             except asyncio.CancelledError:
                 break
 

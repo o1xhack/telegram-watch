@@ -256,6 +256,76 @@ def fetch_summary_counts(
     return {int(row["sender_id"]): int(row["cnt"]) for row in rows}
 
 
+def fetch_reply_snapshot_candidates(
+    conn: sqlite3.Connection,
+    *,
+    chat_ids: Iterable[int] | None = None,
+) -> list[tuple[int, int]]:
+    params: list[object] = []
+    chat_filter = ""
+    if chat_ids:
+        chat_ids = tuple(chat_ids)
+        placeholders = ",".join("?" for _ in chat_ids)
+        chat_filter = f" AND msg.chat_id IN ({placeholders})"
+        params.extend(chat_ids)
+    rows = conn.execute(
+        f"""
+        SELECT msg.chat_id, msg.message_id
+        FROM messages AS msg
+        WHERE (
+            msg.replied_sender_id IS NOT NULL
+            OR msg.replied_date IS NOT NULL
+            OR msg.replied_text IS NOT NULL
+            OR EXISTS (
+                SELECT 1
+                FROM media AS m
+                WHERE m.chat_id = msg.chat_id
+                  AND m.message_id = msg.message_id
+                  AND m.is_reply = 1
+            )
+        ){chat_filter}
+        ORDER BY msg.chat_id ASC, msg.message_id ASC
+        """,
+        params,
+    ).fetchall()
+    return [(int(row["chat_id"]), int(row["message_id"])) for row in rows]
+
+
+def clear_reply_snapshots(
+    conn: sqlite3.Connection,
+    keys: Iterable[tuple[int, int]],
+) -> tuple[int, int]:
+    keys = tuple(keys)
+    if not keys:
+        return (0, 0)
+    cleared_messages = 0
+    cleared_media = 0
+    with conn:
+        for chat_id, message_id in keys:
+            updated = conn.execute(
+                """
+                UPDATE messages
+                SET replied_sender_id = NULL,
+                    replied_date = NULL,
+                    replied_text = NULL
+                WHERE chat_id = ? AND message_id = ?
+                """,
+                (chat_id, message_id),
+            ).rowcount
+            if updated:
+                cleared_messages += int(updated)
+            deleted_media = conn.execute(
+                """
+                DELETE FROM media
+                WHERE chat_id = ? AND message_id = ? AND is_reply = 1
+                """,
+                (chat_id, message_id),
+            ).rowcount
+            if deleted_media:
+                cleared_media += int(deleted_media)
+    return (cleared_messages, cleared_media)
+
+
 def _attach_media(conn: sqlite3.Connection, messages: list[DbMessage]) -> None:
     if not messages:
         return

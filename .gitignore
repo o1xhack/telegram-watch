@@ -229,6 +229,8 @@ logs/
 # request tracking docs stay local
 docs/requests/*
 !docs/requests/.gitkeep
+docs/reviews/*
+!docs/reviews/.gitkeep
 
 # macOS
 .DS_Store

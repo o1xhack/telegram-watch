@@ -4,6 +4,15 @@
 
 > Entries are arranged from newest to oldest so the latest release notes stay at the top. Each bullet references the requirement(s) that introduced the change.
 
+## 1.0.3 — 2026-02-12
+- Added a one-time `cleanup-replies` workflow to scan forum targets, remove false historical reply snapshots caused by topic linkage, preserve true explicit replies, and emit dry-run/apply stats with optional DB backup (REQ-20260212-003-historical-reply-backfill-cleanup).
+
+## 1.0.2 — 2026-02-12
+- Improved forum reply detection so topic-linkage messages are no longer mislabeled as `Reply to`, while explicit replies in topics and non-forum reply behavior remain intact with new regression tests (REQ-20260212-002-forum-topic-reply-disambiguation).
+
+## 1.0.1 — 2026-02-11
+- Hardened summary-loop resilience: transient send failures no longer terminate periodic summary scheduling, and added regression coverage to keep the loop alive after send errors (REQ-20260211-001-summary-loop-resilience).
+
 ## 1.0.0 — 2026-02-04
 - Published the `v1.0.0` git tag and synchronized README install examples across all locales to point to `@v1.0.0` (REQ-20260208-001-release-tag-100-readme-sync).
 - Shipped multi-target monitoring with control-group routing and a local GUI, including improved control-group mapping UX (REQ-20260202-001-multi-admin-monitoring, REQ-20260203-001-config-gui-design, REQ-20260204-003-gui-control-mapping-ux).

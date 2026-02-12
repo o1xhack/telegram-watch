@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from datetime import datetime, timedelta, timezone
+import logging
 from pathlib import Path
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
 
 import pytest
 
@@ -163,6 +163,213 @@ def test_topic_reply_id_for_message_respects_control_group():
         topic_target_map=MappingProxyType({}),
     )
     assert runner._topic_reply_id_for_message(control_no_map, -123, message) is None
+
+
+def test_is_explicit_reply_non_forum_reply_is_true():
+    message = SimpleNamespace(
+        is_reply=True,
+        reply_to_msg_id=42,
+        reply_to=SimpleNamespace(
+            forum_topic=False,
+            reply_to_top_id=None,
+            quote=False,
+        ),
+    )
+    assert runner._is_explicit_reply(message) is True
+
+
+def test_is_explicit_reply_forum_topic_linkage_is_false():
+    message = SimpleNamespace(
+        is_reply=True,
+        reply_to_msg_id=161204,
+        reply_to=SimpleNamespace(
+            forum_topic=True,
+            reply_to_top_id=None,
+            quote=False,
+        ),
+    )
+    assert runner._is_explicit_reply(message) is False
+
+
+def test_is_explicit_reply_forum_explicit_reply_is_true():
+    message = SimpleNamespace(
+        is_reply=True,
+        reply_to_msg_id=367090,
+        reply_to=SimpleNamespace(
+            forum_topic=True,
+            reply_to_top_id=161204,
+            quote=False,
+        ),
+    )
+    assert runner._is_explicit_reply(message) is True
+
+
+@pytest.mark.asyncio
+async def test_get_reply_snapshot_skips_forum_topic_linkage(tmp_path: Path):
+    class Message:
+        id = 1
+        is_reply = True
+        reply_to_msg_id = 161204
+        reply_to = SimpleNamespace(forum_topic=True, reply_to_top_id=None, quote=False)
+
+        async def get_reply_message(self):
+            raise AssertionError("forum topic linkage should skip reply fetch")
+
+    snapshot = await runner._get_reply_snapshot(
+        object(),
+        tmp_path,
+        Message(),
+        chat_id=-123,
+    )
+
+    assert snapshot is None
+
+
+@pytest.mark.asyncio
+async def test_get_reply_snapshot_keeps_forum_explicit_reply(tmp_path: Path):
+    class Reply:
+        id = 99
+        sender_id = 555
+        message = "quoted text"
+        raw_text = "quoted text"
+        date = datetime(2026, 2, 12, 12, 0, tzinfo=timezone.utc)
+        media = None
+        file = None
+
+    class Message:
+        id = 100
+        is_reply = True
+        reply_to_msg_id = 367090
+        reply_to = SimpleNamespace(forum_topic=True, reply_to_top_id=161204, quote=False)
+
+        async def get_reply_message(self):
+            return Reply()
+
+    snapshot = await runner._get_reply_snapshot(
+        object(),
+        tmp_path,
+        Message(),
+        chat_id=-123,
+    )
+
+    assert snapshot is not None
+    assert snapshot.sender_id == 555
+    assert snapshot.text == "quoted text"
+    assert snapshot.media == []
+
+
+@pytest.mark.asyncio
+async def test_run_reply_cleanup_dry_run_counts(monkeypatch, tmp_path: Path):
+    config = build_config(tmp_path)
+    object.__setattr__(config.targets[0], "target_chat_id", -123)
+
+    @contextmanager
+    def fake_db_session(_path: Path):
+        yield object()
+
+    class DummyClient:
+        async def get_entity(self, _chat_id):
+            return SimpleNamespace(forum=True)
+
+        async def get_messages(self, _chat_id, ids):
+            msg1 = SimpleNamespace(
+                id=ids[0],
+                is_reply=True,
+                reply_to=SimpleNamespace(forum_topic=True, reply_to_top_id=None, quote=False),
+            )
+            msg2 = SimpleNamespace(
+                id=ids[1],
+                is_reply=True,
+                reply_to=SimpleNamespace(forum_topic=True, reply_to_top_id=100, quote=False),
+            )
+            return [msg1, msg2, None]
+
+        async def disconnect(self):
+            return None
+
+    async def fake_start_client(_client, _role):
+        return None
+
+    async def fake_with_floodwait(func, *args, **kwargs):
+        return await func(*args, **kwargs)
+
+    monkeypatch.setattr(runner, "db_session", fake_db_session)
+    monkeypatch.setattr(
+        runner,
+        "fetch_reply_snapshot_candidates",
+        lambda _conn, **_kwargs: [(-123, 1), (-123, 2), (-123, 3)],
+    )
+    monkeypatch.setattr(runner, "_build_client", lambda _config: DummyClient())
+    monkeypatch.setattr(runner, "_start_client", fake_start_client)
+    monkeypatch.setattr(runner, "_with_floodwait", fake_with_floodwait)
+    monkeypatch.setattr(
+        runner,
+        "clear_reply_snapshots",
+        lambda _conn, _keys: (_ for _ in ()).throw(AssertionError("dry-run should not clear")),
+    )
+
+    stats = await runner.run_reply_cleanup(config, apply=False, backup=False)
+    assert stats.scanned == 3
+    assert stats.kept_explicit_reply == 1
+    assert stats.missing_messages == 1
+    assert stats.to_clear == 1
+    assert stats.cleared_messages == 0
+    assert stats.cleared_media == 0
+
+
+@pytest.mark.asyncio
+async def test_run_reply_cleanup_apply_clears_candidates(monkeypatch, tmp_path: Path):
+    config = build_config(tmp_path)
+    object.__setattr__(config.targets[0], "target_chat_id", -123)
+
+    @contextmanager
+    def fake_db_session(_path: Path):
+        yield object()
+
+    class DummyClient:
+        async def get_entity(self, _chat_id):
+            return SimpleNamespace(forum=True)
+
+        async def get_messages(self, _chat_id, ids):
+            msg = SimpleNamespace(
+                id=ids[0],
+                is_reply=True,
+                reply_to=SimpleNamespace(forum_topic=True, reply_to_top_id=None, quote=False),
+            )
+            return [msg]
+
+        async def disconnect(self):
+            return None
+
+    async def fake_start_client(_client, _role):
+        return None
+
+    async def fake_with_floodwait(func, *args, **kwargs):
+        return await func(*args, **kwargs)
+
+    captured: dict[str, object] = {}
+
+    def fake_clear_reply_snapshots(_conn, keys):
+        captured["keys"] = list(keys)
+        return (1, 2)
+
+    monkeypatch.setattr(runner, "db_session", fake_db_session)
+    monkeypatch.setattr(
+        runner,
+        "fetch_reply_snapshot_candidates",
+        lambda _conn, **_kwargs: [(-123, 42)],
+    )
+    monkeypatch.setattr(runner, "_build_client", lambda _config: DummyClient())
+    monkeypatch.setattr(runner, "_start_client", fake_start_client)
+    monkeypatch.setattr(runner, "_with_floodwait", fake_with_floodwait)
+    monkeypatch.setattr(runner, "clear_reply_snapshots", fake_clear_reply_snapshots)
+
+    stats = await runner.run_reply_cleanup(config, apply=True, backup=False)
+    assert captured["keys"] == [(-123, 42)]
+    assert stats.to_clear == 1
+    assert stats.cleared_messages == 1
+    assert stats.cleared_media == 2
+    assert stats.backup_path is None
 
 
 def test_resolve_once_targets_by_name_and_id(tmp_path: Path):
@@ -574,3 +781,26 @@ async def test_summary_loop_passes_tracker_and_bark_context(monkeypatch, tmp_pat
     assert captured["tracker"] is tracker
     assert captured["bark_context"] == "(2H)"
     assert captured_report_name["report_name"] == "index_-123.html"
+
+
+@pytest.mark.asyncio
+async def test_summary_loop_continues_after_send_exception(monkeypatch, tmp_path: Path, caplog):
+    config = build_config(tmp_path)
+    target = config.targets[0]
+    control = config.control_groups["default"]
+    tracker = runner._ActivityTracker()
+
+    # Force immediate timeout so _run enters the summary path without waiting.
+    object.__setattr__(target, "summary_interval_minutes", 0)
+    loop = runner._SummaryLoop(config, target, control, client=object(), tracker=tracker)
+
+    async def fake_send_summary() -> None:
+        loop._stop.set()
+        raise RuntimeError("send failed")
+
+    monkeypatch.setattr(loop, "_send_summary", fake_send_summary)
+
+    with caplog.at_level(logging.ERROR):
+        await loop._run()
+
+    assert "Summary send failed for target 'default' (chat_id=-123)" in caplog.text
