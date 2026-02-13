@@ -2,11 +2,20 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pytest
 
 from telegram_watch.config import ConfigError
-from telegram_watch.gui import _RunnerManager, _load_raw_config, _render_toml, _validate_payload
+from telegram_watch.gui import (
+    _RunnerManager,
+    _TIME_FORMAT_UNITS,
+    _build_timezone_presets,
+    _load_raw_config,
+    _normalize_config,
+    _render_toml,
+    _validate_payload,
+)
 
 try:  # pragma: no cover - Python 3.11+ uses tomllib
     import tomllib
@@ -236,6 +245,68 @@ def test_validate_payload_skips_topic_map_errors_when_routing_disabled() -> None
 
     assert not errors
     assert normalized["control_groups"][0]["topic_target_map"] == []
+
+
+def test_timezone_presets_cover_common_regions() -> None:
+    presets = _build_timezone_presets()
+    values = {entry["value"] for entry in presets}
+    required = {
+        "Asia/Shanghai",
+        "Asia/Hong_Kong",
+        "Asia/Tokyo",
+        "Asia/Seoul",
+        "America/New_York",
+        "America/Chicago",
+        "America/Los_Angeles",
+        "Europe/London",
+        "Europe/Paris",
+        "Europe/Berlin",
+    }
+    for timezone in required:
+        try:
+            ZoneInfo(timezone)
+        except ZoneInfoNotFoundError:
+            continue
+        assert timezone in values
+
+    try:
+        ZoneInfo("Asia/Osaka")
+    except ZoneInfoNotFoundError:
+        assert "Asia/Osaka" not in values
+    else:
+        assert "Asia/Osaka" in values
+
+
+def test_normalize_config_keeps_custom_timezone_value() -> None:
+    data = _normalize_config({"reporting": {"timezone": "Antarctica/Troll"}})
+
+    assert data["reporting"]["timezone"] == "Antarctica/Troll"
+    assert data["reporting_timezone_presets"]
+
+
+def test_normalize_config_includes_time_format_units() -> None:
+    data = _normalize_config({})
+    assert "display_time_format_units" in data
+    units = data["display_time_format_units"]
+    assert set(units.keys()) == {
+        "year", "month", "day", "hour", "minute", "second",
+        "timezone", "date_separator",
+    }
+    assert len(units["year"]) == 2
+    assert len(units["month"]) == 4
+    assert len(units["day"]) == 2
+    assert len(units["hour"]) == 3
+    assert len(units["date_separator"]) == 3
+
+
+def test_time_format_units_match_module_constant() -> None:
+    data = _normalize_config({})
+    assert data["display_time_format_units"] is _TIME_FORMAT_UNITS
+
+
+def test_normalize_config_preserves_custom_time_format() -> None:
+    data = _normalize_config({"display": {"time_format": "%B %-d, %Y %I:%M"}})
+    assert data["display"]["time_format"] == "%B %-d, %Y %I:%M"
 
 
 def test_load_raw_config_reports_invalid_toml(tmp_path: Path) -> None:

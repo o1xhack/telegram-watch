@@ -998,7 +998,6 @@ async def _send_report_bundle(
     bark_context: str | None = None,
     fallback_client: TelegramClient | None = None,
 ) -> None:
-    window = f"{since.isoformat()} → {(until.isoformat() if until else 'now')}"
     control_chat_id = control.control_chat_id
     if _topic_routing_enabled(control):
         await _send_topic_reports(
@@ -1021,7 +1020,7 @@ async def _send_report_bundle(
             fallback_client=fallback_client,
         )
     else:
-        caption = f"tgwatch report\nWindow: {window}\nMessages: {len(messages)}"
+        caption = _format_report_caption("Report", len(messages), since, until, config)
         await _send_file_with_fallback(
             client,
             fallback_client,
@@ -1202,7 +1201,6 @@ async def _send_topic_reports(
     grouped: dict[int, list[DbMessage]] = {}
     for message in messages:
         grouped.setdefault(message.sender_id, []).append(message)
-    window = f"{since.isoformat()} → {(until.isoformat() if until else 'now')}"
     for user_id, items in grouped.items():
         label = config.format_user_label(user_id, target=target)
         report_name = f"index_{target.target_chat_id}_{user_id}.html"
@@ -1215,12 +1213,7 @@ async def _send_topic_reports(
             report_dir=report_dir,
             report_name=report_name,
         )
-        caption = (
-            "tgwatch report\n"
-            f"User: {label}\n"
-            f"Window: {window}\n"
-            f"Messages: {len(items)}"
-        )
+        caption = _format_report_caption(label, len(items), since, until, config)
         reply_to = _topic_reply_id_for_user(control, target.target_chat_id, user_id)
         await _send_file_with_fallback(
             client,
@@ -1252,6 +1245,48 @@ def _format_user_counts(
         suffix = "message" if count == 1 else "messages"
         parts.append(f"{label} {count} {suffix}")
     return ", ".join(parts)
+
+
+def _format_report_caption(
+    label: str,
+    count: int,
+    since: datetime,
+    until: datetime | None,
+    config: Config,
+) -> str:
+    """Build a concise two-line caption for report files sent to the control chat."""
+    since_str = _format_timestamp_local(since, config)
+    if until is None:
+        until_str = "now"
+    else:
+        since_local = since.astimezone(config.reporting.timezone)
+        until_local = until.astimezone(config.reporting.timezone)
+        if since_local.date() == until_local.date():
+            # Same day — show only the time portion for the end.
+            fmt = config.display.time_format or DEFAULT_TIME_FORMAT
+            # Strip date codes and leading separators to get time-only format.
+            time_fmt = _extract_time_format(fmt)
+            try:
+                until_str = until_local.strftime(time_fmt)
+            except Exception:  # pragma: no cover
+                until_str = _format_timestamp_local(until, config)
+        else:
+            until_str = _format_timestamp_local(until, config)
+    return f"\U0001f4cb {label} \u2014 {count} messages\n{since_str} \u2192 {until_str}"
+
+
+def _extract_time_format(fmt: str) -> str:
+    """Extract the time-only portion from a strftime format string.
+
+    Heuristic: the time part starts at the first ``%H``, ``%I``, or ``%-H``
+    token.  Everything before that (date codes and separators) is stripped.
+    If no time code is found, return the full format as a fallback.
+    """
+    for marker in ("%H", "%I", "%-H"):
+        idx = fmt.find(marker)
+        if idx != -1:
+            return fmt[idx:].strip()
+    return fmt
 
 
 def _format_timestamp_local(dt: datetime, config: Config) -> str:

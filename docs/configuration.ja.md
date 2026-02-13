@@ -159,7 +159,7 @@ General の Topic ID は常に `1` です。Topic ルーティングを無効に
 ----- | ---- | ------
 `reports_dir` | HTML レポートのルート。`reports/YYYY-MM-DD/HHMM/index.html` 形式。 | `reports`
 `summary_interval_minutes` | `run` のデフォルトレポート間隔（ターゲットごとに `targets[].summary_interval_minutes` で上書き可能）。 | `120`
-`timezone` | IANA タイムゾーン（例 `Asia/Tokyo`、`America/Los_Angeles`）。 | `UTC`
+`timezone` | IANA タイムゾーン（例 `Asia/Tokyo`、`America/Los_Angeles`）。GUI ではこの項目は主要プリセット（中国/日本/韓国/米国/欧州）のドロップダウンになり、既存の非プリセット値はカスタム値として保持されます。 | `UTC`
 `retention_days` | レポート/メディアの保持日数。超過分は自動削除。180 日超は確認（CLI は端末プロンプト、GUI は画面内確認）。 | `30`
 
 各ウィンドウで HTML レポートを生成し、コントロールチャットへ送信後、メッセージ（引用・メディア含む）を送ります。
@@ -169,7 +169,7 @@ General の Topic ID は常に `1` です。Topic ルーティングを無効に
 項目 | 説明 | 既定値
 ----- | ---- | ------
 `show_ids` | コントロールチャットに ID を表示するか。 | `true`
-`time_format` | 時刻表示（strftime）。空欄ならデフォルト。 | `%Y.%m.%d %H:%M:%S (%Z)`
+`time_format` | 時刻表示（strftime）。GUI ではこの項目は年・月・日・時・分・秒・日付区切り・タイムゾーンのドロップダウンで構成されるビルダーになり、既存の非ビルダー形式はカスタム値として保持されます。 | `%Y.%m.%d %H:%M:%S (%Z)`
 
 ## 9. 通知（`[notifications]`）
 

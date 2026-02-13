@@ -159,7 +159,7 @@ General 主题固定 ID 为 `1`。关闭 Topic 路由时默认发送到 General�
 ----- | ---- | ------
 `reports_dir` | HTML 报告根目录，子目录按 `reports/YYYY-MM-DD/HHMM/index.html` 组织。 | `reports`
 `summary_interval_minutes` | `run` 的默认报告间隔（目标群可通过 `targets[].summary_interval_minutes` 覆盖）。 | `120`
-`timezone` | IANA 时区（如 `Asia/Shanghai`、`America/Los_Angeles`）。 | `UTC`
+`timezone` | IANA 时区（如 `Asia/Shanghai`、`America/Los_Angeles`）。GUI 中该字段提供常用下拉（中国/日本/韩国/美国/欧洲）；若配置里已有非预置值，会以自定义值保留。 | `UTC`
 `retention_days` | 报告/媒体保留天数，超过即自动清理；设置 >180 时会触发确认（CLI 终端提示或 GUI 界面确认）。 | `30`
 
 每个时间窗内，tgwatch 会生成 HTML 报告并推送到控制群，然后逐条发送该窗口的消息（含引用与媒体）。
@@ -169,7 +169,7 @@ General 主题固定 ID 为 `1`。关闭 Topic 路由时默认发送到 General�
 字段 | 描述 | 默认值
 ----- | ---- | ------
 `show_ids` | 控制群推送中是否显示用户 ID。 | `true`
-`time_format` | 时间戳格式（strftime 语法）。为空则使用默认值。 | `%Y.%m.%d %H:%M:%S (%Z)`
+`time_format` | 时间戳格式（strftime 语法）。GUI 中该字段提供结构化构建器，包含年、月、日、时、分、秒、日期分隔符和时区显示的下拉菜单；若配置里已有非构建器格式值，会以自定义值保留并可用原始文本编辑。 | `%Y.%m.%d %H:%M:%S (%Z)`
 
 ## 9. 通知（`[notifications]`）
 
