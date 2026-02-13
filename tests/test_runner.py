@@ -804,3 +804,50 @@ async def test_summary_loop_continues_after_send_exception(monkeypatch, tmp_path
         await loop._run()
 
     assert "Summary send failed for target 'default' (chat_id=-123)" in caplog.text
+
+
+# --- _format_report_caption / _extract_time_format tests ---
+
+
+def test_format_report_caption_same_day(tmp_path: Path) -> None:
+    cfg = build_config(tmp_path)
+    since = datetime(2026, 2, 13, 6, 48, 39, tzinfo=timezone.utc)
+    until = datetime(2026, 2, 13, 6, 51, 41, tzinfo=timezone.utc)
+    caption = runner._format_report_caption("FLT", 3, since, until, cfg)
+    lines = caption.split("\n")
+    assert lines[0] == "\U0001f4cb FLT \u2014 3 messages"
+    # Same day: end time should omit date portion
+    assert "\u2192" in lines[1]
+    # Full start timestamp present
+    assert "2026.02.13" in lines[1]
+    # End should NOT repeat the date
+    parts = lines[1].split("\u2192")
+    assert "2026.02.13" not in parts[1]
+
+
+def test_format_report_caption_cross_day(tmp_path: Path) -> None:
+    cfg = build_config(tmp_path)
+    since = datetime(2026, 2, 12, 23, 50, 0, tzinfo=timezone.utc)
+    until = datetime(2026, 2, 13, 0, 10, 0, tzinfo=timezone.utc)
+    caption = runner._format_report_caption("FLT", 5, since, until, cfg)
+    lines = caption.split("\n")
+    assert lines[0] == "\U0001f4cb FLT \u2014 5 messages"
+    # Cross-day: both dates should be present
+    parts = lines[1].split("\u2192")
+    assert "2026.02.12" in parts[0]
+    assert "2026.02.13" in parts[1]
+
+
+def test_format_report_caption_until_none(tmp_path: Path) -> None:
+    cfg = build_config(tmp_path)
+    since = datetime(2026, 2, 13, 6, 0, 0, tzinfo=timezone.utc)
+    caption = runner._format_report_caption("Report", 1, since, None, cfg)
+    assert "now" in caption
+    assert "\U0001f4cb Report \u2014 1 messages" in caption
+
+
+def test_extract_time_format_strips_date() -> None:
+    assert runner._extract_time_format("%Y.%m.%d %H:%M:%S (%Z)") == "%H:%M:%S (%Z)"
+    assert runner._extract_time_format("%m-%d %H:%M") == "%H:%M"
+    # No time code at all — returns full format
+    assert runner._extract_time_format("%Y.%m.%d") == "%Y.%m.%d"

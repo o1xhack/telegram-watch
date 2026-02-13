@@ -4,6 +4,9 @@
 
 > Entries are arranged from newest to oldest so the latest release notes stay at the top. Each bullet references the requirement(s) that introduced the change.
 
+## 1.2.1 — 2026-02-13
+- Simplified report file captions in the control chat from verbose ISO timestamps to a concise two-line format with user-configured time formatting (REQ-20260213-001-humanize-report-caption).
+
 ## 1.2.0 — 2026-02-12
 - Replaced the free-text time format input in GUI with a structured builder featuring dropdowns for year, month, day, hour, minute, second, date separator, and timezone display, with live preview and custom-format fallback (REQ-20260212-006-gui-time-format-builder).
 
