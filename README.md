@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](docs/README.zh-Hans.md) | [繁體中文](docs/README.zh-Hant.md) | [日本語](docs/README.ja.md)
 
-**Docs Version:** `v1.0.0`
+**Docs Version:** `v1.0.4`
 
 [Follow on X](https://x.com/o1xhack) · [Telegram EN channel](https://t.me/lalabeng) · [Telegram 中文频道](https://t.me/o1xinsight)
 
