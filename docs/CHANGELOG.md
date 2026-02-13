@@ -4,6 +4,9 @@
 
 > Entries are arranged from newest to oldest so the latest release notes stay at the top. Each bullet references the requirement(s) that introduced the change.
 
+## 1.2.0 — 2026-02-12
+- Replaced the free-text time format input in GUI with a structured builder featuring dropdowns for year, month, day, hour, minute, second, date separator, and timezone display, with live preview and custom-format fallback (REQ-20260212-006-gui-time-format-builder).
+
 ## 1.1.0 — 2026-02-12
 - Added a GUI timezone dropdown with common presets across China, Japan, Korea, US, and major Europe zones, while keeping `config.toml` values as IANA timezone strings and preserving existing non-preset values as custom selections (REQ-20260212-005-gui-timezone-presets).
 

@@ -9,6 +9,7 @@ import pytest
 from telegram_watch.config import ConfigError
 from telegram_watch.gui import (
     _RunnerManager,
+    _TIME_FORMAT_UNITS,
     _build_timezone_presets,
     _load_raw_config,
     _normalize_config,
@@ -281,6 +282,31 @@ def test_normalize_config_keeps_custom_timezone_value() -> None:
 
     assert data["reporting"]["timezone"] == "Antarctica/Troll"
     assert data["reporting_timezone_presets"]
+
+
+def test_normalize_config_includes_time_format_units() -> None:
+    data = _normalize_config({})
+    assert "display_time_format_units" in data
+    units = data["display_time_format_units"]
+    assert set(units.keys()) == {
+        "year", "month", "day", "hour", "minute", "second",
+        "timezone", "date_separator",
+    }
+    assert len(units["year"]) == 2
+    assert len(units["month"]) == 4
+    assert len(units["day"]) == 2
+    assert len(units["hour"]) == 3
+    assert len(units["date_separator"]) == 3
+
+
+def test_time_format_units_match_module_constant() -> None:
+    data = _normalize_config({})
+    assert data["display_time_format_units"] is _TIME_FORMAT_UNITS
+
+
+def test_normalize_config_preserves_custom_time_format() -> None:
+    data = _normalize_config({"display": {"time_format": "%B %-d, %Y %I:%M"}})
+    assert data["display"]["time_format"] == "%B %-d, %Y %I:%M"
 
 
 def test_load_raw_config_reports_invalid_toml(tmp_path: Path) -> None:

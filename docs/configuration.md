@@ -174,7 +174,7 @@ During each window, tgwatch writes the HTML report to `reports_dir`, uploads tha
 Field | Description | Default
 ----- | ----------- | -------
 `show_ids` | Whether control-chat pushes append `(ID)` to aliases/usernames. | `true`
-`time_format` | Timestamp format for control-chat pushes (`strftime` syntax, e.g., `%Y.%m.%d %H:%M:%S (%Z)`). Leave blank to use the default. | `%Y.%m.%d %H:%M:%S (%Z)`
+`time_format` | Timestamp format for control-chat pushes (`strftime` syntax). In GUI, this field is a structured builder with dropdowns for year, month, day, hour, minute, second, date separator, and timezone display; existing non-builder formats are preserved as custom values with a raw text fallback. | `%Y.%m.%d %H:%M:%S (%Z)`
 
 ## 9. Notifications (`[notifications]`)
 

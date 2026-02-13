@@ -70,6 +70,43 @@ def _build_timezone_presets() -> list[dict[str, str]]:
         seen.add(value)
     return presets
 
+_TIME_FORMAT_UNITS: dict[str, list[dict[str, str]]] = {
+    "year": [
+        {"label": "4-digit (2026)", "value": "%Y"},
+        {"label": "2-digit (26)", "value": "%y"},
+    ],
+    "month": [
+        {"label": "Zero-padded (01)", "value": "%m"},
+        {"label": "No padding (1)", "value": "%-m"},
+        {"label": "Abbreviated (Jan)", "value": "%b"},
+        {"label": "Full name (January)", "value": "%B"},
+    ],
+    "day": [
+        {"label": "Zero-padded (01)", "value": "%d"},
+        {"label": "No padding (1)", "value": "%-d"},
+    ],
+    "hour": [
+        {"label": "24h zero-padded (14)", "value": "%H"},
+        {"label": "12h zero-padded (02)", "value": "%I"},
+        {"label": "24h no padding (2)", "value": "%-H"},
+    ],
+    "minute": [
+        {"label": "Zero-padded (05)", "value": "%M"},
+    ],
+    "second": [
+        {"label": "Zero-padded (09)", "value": "%S"},
+    ],
+    "timezone": [
+        {"label": "Abbreviation (CST)", "value": "%Z"},
+        {"label": "Offset (+0800)", "value": "%z"},
+    ],
+    "date_separator": [
+        {"label": "Dot (.)", "value": "."},
+        {"label": "Dash (-)", "value": "-"},
+        {"label": "Slash (/)", "value": "/"},
+    ],
+}
+
 _HTML = """<!doctype html>
 <html lang="en">
   <head>
@@ -415,7 +452,9 @@ const state = {
   runnerLoading: false,
   locked: false,
   lockMessage: "",
-  migrationStatus: ""
+  migrationStatus: "",
+  timeFormatParts: null,
+  timeFormatCustom: false
 };
 const runnerDefaults = {
   running: false,
@@ -547,6 +586,151 @@ const buildTimezoneOptions = (presets, currentValue) => {
   }
   return options.join("");
 };
+
+// --- Time Format Builder helpers ---
+
+const _TF_KNOWN_CODES = {
+  year: ["%Y", "%y"],
+  month: ["%m", "%-m", "%b", "%B"],
+  day: ["%d", "%-d"],
+  hour: ["%H", "%I", "%-H"],
+  minute: ["%M"],
+  second: ["%S"],
+};
+const _TF_DATE_SEPS = [".", "-", "/"];
+const _TF_TZ_CODES = ["%Z", "%z"];
+
+function parseTimeFormat(fmt) {
+  if (!fmt || typeof fmt !== "string") return null;
+  let s = fmt.trim();
+  let tz = "";
+  for (const code of _TF_TZ_CODES) {
+    const suffix = " (" + code + ")";
+    if (s.endsWith(suffix)) {
+      tz = code;
+      s = s.slice(0, -suffix.length);
+      break;
+    }
+  }
+  // Split into date part and time part at the space boundary.
+  // Heuristic: time part starts with a known hour code.
+  let datePart = "";
+  let timePart = "";
+  const spaceIdx = s.indexOf(" ");
+  if (spaceIdx === -1) {
+    // Single segment — decide if it is date or time.
+    if (_TF_KNOWN_CODES.hour.some((c) => s.startsWith(c))) {
+      timePart = s;
+    } else {
+      datePart = s;
+    }
+  } else {
+    datePart = s.slice(0, spaceIdx);
+    timePart = s.slice(spaceIdx + 1);
+  }
+
+  // Parse date
+  let year = "", month = "", day = "", dateSep = ".";
+  if (datePart) {
+    let sep = "";
+    for (const candidate of _TF_DATE_SEPS) {
+      if (datePart.includes(candidate)) { sep = candidate; break; }
+    }
+    dateSep = sep || ".";
+    const dateCodes = sep ? datePart.split(sep) : [datePart];
+    // Identify each code
+    const identified = [];
+    for (const code of dateCodes) {
+      if (!code) continue;
+      let found = false;
+      for (const [unit, codes] of Object.entries(_TF_KNOWN_CODES)) {
+        if (["year", "month", "day"].includes(unit) && codes.includes(code)) {
+          identified.push({ unit, code });
+          found = true;
+          break;
+        }
+      }
+      if (!found) return null; // unrecognised code
+    }
+    for (const item of identified) {
+      if (item.unit === "year") year = item.code;
+      else if (item.unit === "month") month = item.code;
+      else if (item.unit === "day") day = item.code;
+    }
+  }
+
+  // Parse time
+  let hour = "", minute = "", second = "";
+  if (timePart) {
+    const timeCodes = timePart.split(":");
+    const tIdentified = [];
+    for (const code of timeCodes) {
+      if (!code) continue;
+      let found = false;
+      for (const [unit, codes] of Object.entries(_TF_KNOWN_CODES)) {
+        if (["hour", "minute", "second"].includes(unit) && codes.includes(code)) {
+          tIdentified.push({ unit, code });
+          found = true;
+          break;
+        }
+      }
+      if (!found) return null;
+    }
+    for (const item of tIdentified) {
+      if (item.unit === "hour") hour = item.code;
+      else if (item.unit === "minute") minute = item.code;
+      else if (item.unit === "second") second = item.code;
+    }
+  }
+
+  return { year, month, day, dateSep, hour, minute, second, timezone: tz };
+}
+
+function composeTimeFormat(parts) {
+  const dateCodes = [parts.year, parts.month, parts.day].filter(Boolean);
+  const timeCodes = [parts.hour, parts.minute, parts.second].filter(Boolean);
+  let result = "";
+  if (dateCodes.length) {
+    result = dateCodes.join(parts.dateSep || ".");
+  }
+  if (timeCodes.length) {
+    if (result) result += " ";
+    result += timeCodes.join(":");
+  }
+  if (parts.timezone) {
+    if (result) result += " ";
+    result += "(" + parts.timezone + ")";
+  }
+  return result || "%Y.%m.%d %H:%M:%S (%Z)";
+}
+
+function buildTimeFormatDropdown(unitName, presets, currentValue, fieldId) {
+  const options = ['<option value="">Don\\u0027t display</option>'];
+  (presets || []).forEach((entry) => {
+    const sel = entry.value === currentValue ? "selected" : "";
+    options.push('<option value="' + entry.value + '" ' + sel + '>' + entry.label + "</option>");
+  });
+  return '<select id="' + fieldId + '" data-tf-unit="' + unitName + '">' + options.join("") + "</select>";
+}
+
+function timeFormatPreview(parts) {
+  const sample = {
+    "%Y": "2026", "%y": "26",
+    "%m": "01", "%-m": "1", "%b": "Jan", "%B": "January",
+    "%d": "05", "%-d": "5",
+    "%H": "14", "%I": "02", "%-H": "2",
+    "%M": "05", "%S": "09",
+    "%Z": "CST", "%z": "+0800"
+  };
+  const fmt = composeTimeFormat(parts);
+  let result = fmt;
+  // Replace longest codes first to avoid partial matches (e.g. %-m before %m).
+  const codes = Object.keys(sample).sort((a, b) => b.length - a.length);
+  for (const code of codes) {
+    result = result.split(code).join(sample[code]);
+  }
+  return result;
+}
 
 const runnerStatusText = (runner) => {
   if (!runner) return "Checking status...";
@@ -1160,14 +1344,33 @@ function render() {
           </select>
         </div>
         <div class="field">
-          <label>Time Format</label>
-          <input data-field="display.time_format" value="${data.display.time_format}" />
-        </div>
-        <div class="field">
           <label>Bark Key</label>
           <input data-field="notifications.bark_key" value="${data.notifications.bark_key}" placeholder="optional" />
         </div>
       </div>
+      ${(() => {
+        const tfUnits = data.display_time_format_units || {};
+        if (state.timeFormatCustom || !state.timeFormatParts) {
+          return '<div style="margin-top:16px;"><div class="field"><label>Time Format (custom)</label><input data-field="display.time_format" value="' + (data.display.time_format || "") + '" /><small><a href="#" data-action="tf-switch-builder">Switch to builder</a></small></div></div>';
+        }
+        const p = state.timeFormatParts;
+        const hasMultiDate = [p.year, p.month, p.day].filter(Boolean).length > 1;
+        return '<div style="margin-top:16px;"><label style="font-weight:600;margin-bottom:8px;display:block;">Time Format</label>'
+          + '<div class="grid">'
+          + '<div class="field"><label>Year</label>' + buildTimeFormatDropdown("year", tfUnits.year, p.year, "tf-year") + '</div>'
+          + '<div class="field"><label>Month</label>' + buildTimeFormatDropdown("month", tfUnits.month, p.month, "tf-month") + '</div>'
+          + '<div class="field"><label>Day</label>' + buildTimeFormatDropdown("day", tfUnits.day, p.day, "tf-day") + '</div>'
+          + (hasMultiDate ? '<div class="field"><label>Date Separator</label>' + buildTimeFormatDropdown("dateSep", tfUnits.date_separator, p.dateSep, "tf-datesep") + '</div>' : '')
+          + '<div class="field"><label>Hour</label>' + buildTimeFormatDropdown("hour", tfUnits.hour, p.hour, "tf-hour") + '</div>'
+          + '<div class="field"><label>Minute</label>' + buildTimeFormatDropdown("minute", tfUnits.minute, p.minute, "tf-minute") + '</div>'
+          + '<div class="field"><label>Second</label>' + buildTimeFormatDropdown("second", tfUnits.second, p.second, "tf-second") + '</div>'
+          + '<div class="field"><label>Timezone</label>' + buildTimeFormatDropdown("timezone", tfUnits.timezone, p.timezone, "tf-timezone") + '</div>'
+          + '</div>'
+          + '<div style="margin-top:12px;"><small>Preview: <strong style="font-family:var(--mono);color:var(--accent);">' + timeFormatPreview(p) + '</strong></small>'
+          + '&nbsp;&nbsp;<small>Format: <code style="font-size:12px;color:var(--muted);">' + composeTimeFormat(p) + '</code></small></div>'
+          + '<small><a href="#" data-action="tf-switch-custom">Edit as raw strftime string</a></small>'
+          + '</div>';
+      })()}
     </section>
   `;
 
@@ -1214,6 +1417,16 @@ function bindEvents() {
 
   document.addEventListener("change", (event) => {
     const target = event.target;
+    if (target.dataset && target.dataset.tfUnit) {
+      const unit = target.dataset.tfUnit;
+      if (state.timeFormatParts) {
+        state.timeFormatParts[unit] = target.value;
+        const composed = composeTimeFormat(state.timeFormatParts);
+        state.data.display.time_format = composed;
+        render();
+      }
+      return;
+    }
     if (target.id === "once-target") {
       state.runnerTarget = target.value;
       return;
@@ -1340,6 +1553,29 @@ function bindEvents() {
       migrateConfig();
       return;
     }
+    if (action === "tf-switch-builder") {
+      event.preventDefault();
+      const parsed = parseTimeFormat(state.data.display.time_format || "");
+      if (parsed) {
+        state.timeFormatParts = parsed;
+      } else {
+        state.timeFormatParts = {
+          year: "%Y", month: "%m", day: "%d", dateSep: ".",
+          hour: "%H", minute: "%M", second: "%S", timezone: "%Z"
+        };
+        state.data.display.time_format = composeTimeFormat(state.timeFormatParts);
+      }
+      state.timeFormatCustom = false;
+      render();
+      return;
+    }
+    if (action === "tf-switch-custom") {
+      event.preventDefault();
+      state.timeFormatCustom = true;
+      state.timeFormatParts = null;
+      render();
+      return;
+    }
   });
 }
 
@@ -1355,6 +1591,14 @@ async function loadConfig() {
     state.status = payload.status || "";
     state.locked = Boolean(payload.locked);
     state.lockMessage = payload.lock_message || "";
+    const parsedTf = parseTimeFormat((payload.data && payload.data.display && payload.data.display.time_format) || "");
+    if (parsedTf) {
+      state.timeFormatParts = parsedTf;
+      state.timeFormatCustom = false;
+    } else {
+      state.timeFormatParts = null;
+      state.timeFormatCustom = true;
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     state.errors = [`Failed to load config: ${message}`];
@@ -2008,6 +2252,7 @@ def _normalize_config(raw: dict[str, Any]) -> dict[str, Any]:
             "show_ids": display.get("show_ids", True),
             "time_format": display.get("time_format", "%Y.%m.%d %H:%M:%S (%Z)"),
         },
+        "display_time_format_units": _TIME_FORMAT_UNITS,
         "notifications": {
             "bark_key": notifications.get("bark_key", ""),
         },
