@@ -2,11 +2,19 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pytest
 
 from telegram_watch.config import ConfigError
-from telegram_watch.gui import _RunnerManager, _load_raw_config, _render_toml, _validate_payload
+from telegram_watch.gui import (
+    _RunnerManager,
+    _build_timezone_presets,
+    _load_raw_config,
+    _normalize_config,
+    _render_toml,
+    _validate_payload,
+)
 
 try:  # pragma: no cover - Python 3.11+ uses tomllib
     import tomllib
@@ -236,6 +244,43 @@ def test_validate_payload_skips_topic_map_errors_when_routing_disabled() -> None
 
     assert not errors
     assert normalized["control_groups"][0]["topic_target_map"] == []
+
+
+def test_timezone_presets_cover_common_regions() -> None:
+    presets = _build_timezone_presets()
+    values = {entry["value"] for entry in presets}
+    required = {
+        "Asia/Shanghai",
+        "Asia/Hong_Kong",
+        "Asia/Tokyo",
+        "Asia/Seoul",
+        "America/New_York",
+        "America/Chicago",
+        "America/Los_Angeles",
+        "Europe/London",
+        "Europe/Paris",
+        "Europe/Berlin",
+    }
+    for timezone in required:
+        try:
+            ZoneInfo(timezone)
+        except ZoneInfoNotFoundError:
+            continue
+        assert timezone in values
+
+    try:
+        ZoneInfo("Asia/Osaka")
+    except ZoneInfoNotFoundError:
+        assert "Asia/Osaka" not in values
+    else:
+        assert "Asia/Osaka" in values
+
+
+def test_normalize_config_keeps_custom_timezone_value() -> None:
+    data = _normalize_config({"reporting": {"timezone": "Antarctica/Troll"}})
+
+    assert data["reporting"]["timezone"] == "Antarctica/Troll"
+    assert data["reporting_timezone_presets"]
 
 
 def test_load_raw_config_reports_invalid_toml(tmp_path: Path) -> None:

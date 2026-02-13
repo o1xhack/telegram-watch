@@ -4,6 +4,9 @@
 
 > Entries are arranged from newest to oldest so the latest release notes stay at the top. Each bullet references the requirement(s) that introduced the change.
 
+## 1.1.0 — 2026-02-12
+- Added a GUI timezone dropdown with common presets across China, Japan, Korea, US, and major Europe zones, while keeping `config.toml` values as IANA timezone strings and preserving existing non-preset values as custom selections (REQ-20260212-005-gui-timezone-presets).
+
 ## 1.0.4 — 2026-02-12
 - Standardized the user-facing command surface on `tgwatch` by aligning CLI help output and command templates, removing mixed `telegram_watch` execution instructions from active docs/templates and adding parser coverage (REQ-20260212-004-command-surface-unify-tgwatch).
 

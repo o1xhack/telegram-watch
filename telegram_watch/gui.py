@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 import webbrowser
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .config import (
     ConfigError,
@@ -35,6 +36,39 @@ except ModuleNotFoundError:  # pragma: no cover
 logger = logging.getLogger(__name__)
 
 KEEP_SECRET = "********"
+
+_TIMEZONE_PRESET_CANDIDATES: tuple[tuple[str, str], ...] = (
+    ("UTC", "UTC"),
+    ("China - Shanghai", "Asia/Shanghai"),
+    ("China - Hong Kong", "Asia/Hong_Kong"),
+    ("Japan - Tokyo", "Asia/Tokyo"),
+    # Include a second Japan option when supported by the local tz database.
+    ("Japan - Osaka (alias)", "Asia/Osaka"),
+    ("Korea - Seoul", "Asia/Seoul"),
+    ("US - Eastern (New York)", "America/New_York"),
+    ("US - Central (Chicago)", "America/Chicago"),
+    ("US - Pacific (Los Angeles)", "America/Los_Angeles"),
+    ("Europe - UK (London)", "Europe/London"),
+    ("Europe - Central (Paris)", "Europe/Paris"),
+    ("Europe - Central (Berlin)", "Europe/Berlin"),
+    ("Europe - Central (Madrid)", "Europe/Madrid"),
+    ("Europe - Central (Rome)", "Europe/Rome"),
+)
+
+
+def _build_timezone_presets() -> list[dict[str, str]]:
+    presets: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for label, value in _TIMEZONE_PRESET_CANDIDATES:
+        if value in seen:
+            continue
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError:
+            continue
+        presets.append({"label": label, "value": value})
+        seen.add(value)
+    return presets
 
 _HTML = """<!doctype html>
 <html lang="en">
@@ -489,6 +523,31 @@ const buildUserOptions = (targetUsers, selectedUsers, currentValue) => {
   return options.join("");
 };
 
+const buildTimezoneOptions = (presets, currentValue) => {
+  const selected = String(currentValue || "UTC").trim() || "UTC";
+  const options = [];
+  const seen = new Set();
+  (presets || []).forEach((entry) => {
+    if (!entry || !entry.value) return;
+    const value = String(entry.value);
+    const label = String(entry.label || entry.value);
+    if (seen.has(value)) return;
+    seen.add(value);
+    options.push(
+      `<option value="${value}" ${value === selected ? "selected" : ""}>${label} (${value})</option>`
+    );
+  });
+  if (!seen.has(selected)) {
+    options.unshift(
+      `<option value="${selected}" selected>Custom (keep existing) - ${selected}</option>`
+    );
+  }
+  if (!options.length) {
+    options.push(`<option value="UTC" ${selected === "UTC" ? "selected" : ""}>UTC (UTC)</option>`);
+  }
+  return options.join("");
+};
+
 const runnerStatusText = (runner) => {
   if (!runner) return "Checking status...";
   if (runner.running) {
@@ -775,6 +834,7 @@ function render() {
   const controlGroups = data.control_groups;
   const targetUsers = buildTargetUsers(targets);
   const selectedUsers = collectSelectedUsers(controlGroups);
+  const timezonePresets = data.reporting_timezone_presets || [];
   const selectedOnceTarget = state.runnerTarget || "";
   const oncePushChecked = state.runnerPush;
 
@@ -1077,7 +1137,10 @@ function render() {
         </div>
         <div class="field">
           <label>Timezone</label>
-          <input data-field="reporting.timezone" value="${data.reporting.timezone}" />
+          <select data-field="reporting.timezone">
+            ${buildTimezoneOptions(timezonePresets, data.reporting.timezone)}
+          </select>
+          <small>Saved as IANA timezone string (for example Asia/Shanghai).</small>
         </div>
         <div class="field">
           <label>Retention Days</label>
@@ -1940,6 +2003,7 @@ def _normalize_config(raw: dict[str, Any]) -> dict[str, Any]:
             "timezone": reporting.get("timezone", "UTC"),
             "retention_days": reporting.get("retention_days", 30),
         },
+        "reporting_timezone_presets": _build_timezone_presets(),
         "display": {
             "show_ids": display.get("show_ids", True),
             "time_format": display.get("time_format", "%Y.%m.%d %H:%M:%S (%Z)"),

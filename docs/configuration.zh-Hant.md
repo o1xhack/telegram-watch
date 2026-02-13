@@ -159,7 +159,7 @@ General 主題固定 ID 為 `1`。關閉 Topic 路由時預設送到 General。
 ----- | ---- | ------
 `reports_dir` | HTML 報告根目錄，子目錄依 `reports/YYYY-MM-DD/HHMM/index.html` 組織。 | `reports`
 `summary_interval_minutes` | `run` 的預設報告間隔（目標群可用 `targets[].summary_interval_minutes` 覆蓋）。 | `120`
-`timezone` | IANA 時區（如 `Asia/Taipei`、`America/Los_Angeles`）。 | `UTC`
+`timezone` | IANA 時區（如 `Asia/Taipei`、`America/Los_Angeles`）。GUI 內此欄位提供常用下拉（中國/日本/韓國/美國/歐洲）；若設定檔已有非預置值，會以自訂值保留。 | `UTC`
 `retention_days` | 報告/媒體保留天數，超過即自動清理；設定 >180 時會觸發確認（CLI 終端提示或 GUI 介面確認）。 | `30`
 
 每個時間窗內，tgwatch 會生成 HTML 報告並推送至控制群，之後逐條送出該窗口訊息（含引用與媒體）。
