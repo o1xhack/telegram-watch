@@ -117,7 +117,7 @@ pip install -e .
 **标签版安装（稳定、版本固定）：**
 
 ```bash
-pip install "git+https://github.com/o1xhack/telegram-watch.git@v1.7.0"
+pip install "git+https://github.com/o1xhack/telegram-watch.git@v1.8.0"
 ```
 
 ### 配置与运行
