@@ -11,6 +11,7 @@ import pytest
 
 from telegram_watch.config import ConfigError, FullArchiveConfig
 from telegram_watch.gui import (
+    _JS,
     _RunnerManager,
     _TIME_FORMAT_UNITS,
     _build_timezone_presets,
@@ -347,6 +348,7 @@ def test_status_payload_marks_archive_config_changed_since_daemon_start(
     }
     assert payload["healthy"] is False
     assert "restart the daemon" in payload["status"]
+    assert "not active" in payload["status"]
 
 
 @pytest.mark.parametrize(
@@ -413,6 +415,25 @@ def test_status_payload_requires_restart_when_archive_settings_change(
     }
     assert payload["healthy"] is False
     assert "restart the daemon" in payload["status"]
+    assert "still capturing with its startup configuration" in payload["status"]
+
+
+def test_gui_javascript_distinguishes_active_archive_drift_from_disabled_capture() -> None:
+    runner_status = _JS.split("const runnerStatusText = ", 1)[1].split(
+        "const fullArchiveStatusText = ",
+        1,
+    )[0]
+    archive_status = _JS.split("const fullArchiveStatusText = ", 1)[1].split(
+        "const runnerMessageText = ",
+        1,
+    )[0]
+
+    assert 'status === "degraded" ||' not in runner_status
+    assert 'tf("archivePreviousConfigPid"' in runner_status
+    assert 'tf("archiveRestartRequiredPid"' in runner_status
+    assert 't("archiveStatusRestartRequiredActive")' in archive_status
+    assert "still capturing with previous settings" in _JS
+    assert "仍按旧配置归档" in _JS
 
 
 def test_current_run_clears_pid_when_process_identity_mismatch(monkeypatch, tmp_path: Path) -> None:

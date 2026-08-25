@@ -484,6 +484,7 @@ const _i18n = {
     archiveStatusDegraded: "Disabled: archive health degraded",
     archiveStatusUnverified: "Unavailable: restart daemon to verify",
     archiveStatusRestartRequired: "Restart daemon to apply configuration",
+    archiveStatusRestartRequiredActive: "Still capturing with previous settings; restart required",
     runOnce: "Run once",
     runDaemon: "Run daemon",
     stopDaemon: "Stop daemon",
@@ -500,6 +501,8 @@ const _i18n = {
     stalledPid: "Stalled (pid {pid})",
     archiveDisabledPid: "Running; archive disabled (pid {pid})",
     archiveUnverifiedPid: "Running; archive unverified (pid {pid})",
+    archivePreviousConfigPid: "Running; archive still capturing with previous settings (pid {pid})",
+    archiveRestartRequiredPid: "Running; archive restart required (pid {pid})",
     notRunning: "Not running",
     runnerUnavailable: "Runner status unavailable.",
     sessionNotFound: "Session file not found. Please complete one terminal login first.",
@@ -683,6 +686,7 @@ const _i18n = {
     archiveStatusDegraded: "已停用：归档健康检查异常",
     archiveStatusUnverified: "无法确认：需重启守护进程",
     archiveStatusRestartRequired: "需重启守护进程以应用配置",
+    archiveStatusRestartRequiredActive: "仍按旧配置归档；需重启以应用新配置",
     runOnce: "单次运行",
     runDaemon: "启动守护进程",
     stopDaemon: "停止守护进程",
@@ -699,6 +703,8 @@ const _i18n = {
     stalledPid: "已卡住 (pid {pid})",
     archiveDisabledPid: "运行中，但归档已停用 (pid {pid})",
     archiveUnverifiedPid: "运行中，但归档状态未确认 (pid {pid})",
+    archivePreviousConfigPid: "运行中，仍按旧配置归档 (pid {pid})",
+    archiveRestartRequiredPid: "运行中，归档需重启以应用配置 (pid {pid})",
     notRunning: "未运行",
     runnerUnavailable: "无法获取运行状态。",
     sessionNotFound: "未找到会话文件。请先在终端完成一次登录。",
@@ -1252,8 +1258,18 @@ const runnerStatusText = (runner) => {
       return runner.pid ? tf("stalledPid", {pid: runner.pid}) : t("stalledPid");
     }
     if (runner.full_archive && runner.full_archive.configured) {
-      if (runner.full_archive.status === "degraded" || runner.full_archive.status === "restart_required") {
+      if (runner.full_archive.status === "degraded") {
         return runner.pid ? tf("archiveDisabledPid", {pid: runner.pid}) : t("archiveStatusDegraded");
+      }
+      if (runner.full_archive.status === "restart_required") {
+        if (runner.full_archive.runtime_enabled === true) {
+          return runner.pid
+            ? tf("archivePreviousConfigPid", {pid: runner.pid})
+            : t("archiveStatusRestartRequiredActive");
+        }
+        return runner.pid
+          ? tf("archiveRestartRequiredPid", {pid: runner.pid})
+          : t("archiveStatusRestartRequired");
       }
       if (runner.full_archive.status === "unverified") {
         return runner.pid ? tf("archiveUnverifiedPid", {pid: runner.pid}) : t("archiveStatusUnverified");
@@ -1267,6 +1283,9 @@ const runnerStatusText = (runner) => {
 const fullArchiveStatusText = (runner) => {
   const archive = runner && runner.full_archive;
   if (!archive) return t("archiveStatusDisabled");
+  if (archive.status === "restart_required" && archive.runtime_enabled === true) {
+    return t("archiveStatusRestartRequiredActive");
+  }
   const labels = {
     active: "archiveStatusActive",
     disabled: "archiveStatusDisabled",
@@ -2488,10 +2507,16 @@ class _RunnerManager:
                 "to verify live capture."
             )
         elif full_archive["status"] == "restart_required":
-            message = (
-                "Full Archive configuration changed after startup; restart the "
-                "daemon to apply it."
-            )
+            if full_archive["runtime_enabled"]:
+                message = (
+                    "Full Archive is still capturing with its startup configuration; "
+                    "restart the daemon to apply the updated settings."
+                )
+            else:
+                message = (
+                    "Full Archive live capture is not active; restart the daemon "
+                    "to apply the updated configuration."
+                )
         return {
             "running": running,
             "pid": pid,
