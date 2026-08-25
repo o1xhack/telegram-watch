@@ -477,6 +477,13 @@ const _i18n = {
     pushToControl: "Push to control chat",
     oncePushHelp: "Default is off; enable to push the once report.",
     daemonStatus: "Daemon Status",
+    archiveRuntimeStatus: "Full Archive Status",
+    archiveStatusActive: "Capturing",
+    archiveStatusDisabled: "Disabled",
+    archiveStatusStopped: "Daemon not running",
+    archiveStatusDegraded: "Disabled: archive health degraded",
+    archiveStatusUnverified: "Unavailable: restart daemon to verify",
+    archiveStatusRestartRequired: "Restart daemon to apply configuration",
     runOnce: "Run once",
     runDaemon: "Run daemon",
     stopDaemon: "Stop daemon",
@@ -491,6 +498,8 @@ const _i18n = {
     running: "Running",
     runningPid: "Running (pid {pid})",
     stalledPid: "Stalled (pid {pid})",
+    archiveDisabledPid: "Running; archive disabled (pid {pid})",
+    archiveUnverifiedPid: "Running; archive unverified (pid {pid})",
     notRunning: "Not running",
     runnerUnavailable: "Runner status unavailable.",
     sessionNotFound: "Session file not found. Please complete one terminal login first.",
@@ -667,6 +676,13 @@ const _i18n = {
     pushToControl: "推送到控制群",
     oncePushHelp: "默认关闭；启用后将推送单次运行的报告。",
     daemonStatus: "守护进程状态",
+    archiveRuntimeStatus: "全量归档实际状态",
+    archiveStatusActive: "正在归档",
+    archiveStatusDisabled: "未启用",
+    archiveStatusStopped: "守护进程未运行",
+    archiveStatusDegraded: "已停用：归档健康检查异常",
+    archiveStatusUnverified: "无法确认：需重启守护进程",
+    archiveStatusRestartRequired: "需重启守护进程以应用配置",
     runOnce: "单次运行",
     runDaemon: "启动守护进程",
     stopDaemon: "停止守护进程",
@@ -681,6 +697,8 @@ const _i18n = {
     running: "运行中",
     runningPid: "运行中 (pid {pid})",
     stalledPid: "已卡住 (pid {pid})",
+    archiveDisabledPid: "运行中，但归档已停用 (pid {pid})",
+    archiveUnverifiedPid: "运行中，但归档状态未确认 (pid {pid})",
     notRunning: "未运行",
     runnerUnavailable: "无法获取运行状态。",
     sessionNotFound: "未找到会话文件。请先在终端完成一次登录。",
@@ -926,6 +944,7 @@ const state = {
 const runnerDefaults = {
   running: false,
   pid: null,
+  full_archive: { configured: false, runtime_enabled: false, status: "disabled" },
   run_log: "",
   once_log: "",
   status: "",
@@ -1232,9 +1251,31 @@ const runnerStatusText = (runner) => {
     if (runner.stalled) {
       return runner.pid ? tf("stalledPid", {pid: runner.pid}) : t("stalledPid");
     }
+    if (runner.full_archive && runner.full_archive.configured) {
+      if (runner.full_archive.status === "degraded" || runner.full_archive.status === "restart_required") {
+        return runner.pid ? tf("archiveDisabledPid", {pid: runner.pid}) : t("archiveStatusDegraded");
+      }
+      if (runner.full_archive.status === "unverified") {
+        return runner.pid ? tf("archiveUnverifiedPid", {pid: runner.pid}) : t("archiveStatusUnverified");
+      }
+    }
     return runner.pid ? tf("runningPid", {pid: runner.pid}) : t("running");
   }
   return t("notRunning");
+};
+
+const fullArchiveStatusText = (runner) => {
+  const archive = runner && runner.full_archive;
+  if (!archive) return t("archiveStatusDisabled");
+  const labels = {
+    active: "archiveStatusActive",
+    disabled: "archiveStatusDisabled",
+    stopped: "archiveStatusStopped",
+    degraded: "archiveStatusDegraded",
+    unverified: "archiveStatusUnverified",
+    restart_required: "archiveStatusRestartRequired"
+  };
+  return t(labels[archive.status] || "archiveStatusUnverified");
 };
 
 const runnerMessageText = () => {
@@ -1255,6 +1296,10 @@ function updateRunnerUI() {
   const statusEl = document.getElementById("runner-status");
   if (!statusEl) return;
   statusEl.textContent = runnerStatusText(runner);
+  const archiveStatusEl = document.getElementById("full-archive-status");
+  if (archiveStatusEl) {
+    archiveStatusEl.textContent = fullArchiveStatusText(runner);
+  }
 
   const runLogEl = document.getElementById("run-log");
   if (runLogEl) {
@@ -1656,6 +1701,10 @@ function render() {
         <div class="field">
           <label>${t("daemonStatus")}</label>
           <div class="status" id="runner-status">${runnerStatusText(runner)}</div>
+        </div>
+        <div class="field">
+          <label>${t("archiveRuntimeStatus")}</label>
+          <div class="status" id="full-archive-status">${fullArchiveStatusText(runner)}</div>
         </div>
       </div>
       <div class="actions" style="margin-top:16px;">
@@ -2419,14 +2468,37 @@ class _RunnerManager:
             self._config_health()
         )
         health, stalled_reason = self._runner_health(pid) if running else ({}, None)
+        full_archive = self._full_archive_status(running=running, health=health)
+        archive_problem = running and full_archive["status"] in {
+            "degraded",
+            "restart_required",
+            "unverified",
+        }
         if stalled_reason:
             message = f"Run daemon appears stalled (pid {pid}): {stalled_reason}"
+        elif full_archive["status"] == "degraded":
+            message = (
+                "Full Archive live capture is disabled because archive health is "
+                "degraded. Run archive-status and archive-repair --dry-run before "
+                "restarting the daemon."
+            )
+        elif full_archive["status"] == "unverified":
+            message = (
+                "Full Archive runtime status is unavailable; restart the daemon "
+                "to verify live capture."
+            )
+        elif full_archive["status"] == "restart_required":
+            message = (
+                "Full Archive configuration changed after startup; restart the "
+                "daemon to apply it."
+            )
         return {
             "running": running,
             "pid": pid,
-            "healthy": running and stalled_reason is None,
+            "healthy": running and stalled_reason is None and not archive_problem,
             "stalled": stalled_reason is not None,
             "health": health,
+            "full_archive": full_archive,
             "run_log": run_log,
             "once_log": once_log,
             "status": message or "",
@@ -2434,6 +2506,49 @@ class _RunnerManager:
             "session_ready": session_ready,
             "retention_days": retention_days,
             "requires_retention_confirm": requires_retention_confirm,
+        }
+
+    def _full_archive_status(
+        self,
+        *,
+        running: bool,
+        health: dict[str, Any],
+    ) -> dict[str, Any]:
+        config, _ = self._load_config()
+        archive_config = getattr(config, "full_archive", None)
+        configured = bool(getattr(archive_config, "enabled", False))
+        reported = health.get("full_archive")
+        if not isinstance(reported, dict):
+            return {
+                "configured": configured,
+                "runtime_enabled": None if configured and running else False,
+                "status": (
+                    "unverified"
+                    if configured and running
+                    else "stopped" if configured else "disabled"
+                ),
+            }
+
+        daemon_configured = reported.get("configured")
+        runtime_enabled = reported.get("runtime_enabled")
+        if not isinstance(daemon_configured, bool) or not isinstance(runtime_enabled, bool):
+            return {
+                "configured": configured,
+                "runtime_enabled": None,
+                "status": "unverified",
+            }
+        if configured != daemon_configured:
+            status = "restart_required"
+        elif runtime_enabled:
+            status = "active"
+        elif configured:
+            status = "degraded" if running else "stopped"
+        else:
+            status = "disabled"
+        return {
+            "configured": configured,
+            "runtime_enabled": runtime_enabled,
+            "status": status,
         }
 
     def start_run(self, *, confirm_retention: bool = False) -> dict[str, Any]:

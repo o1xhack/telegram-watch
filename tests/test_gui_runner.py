@@ -226,6 +226,113 @@ def test_status_payload_marks_long_sqlite_queue_as_stalled(
     assert "SQLite made no progress" in payload["status"]
 
 
+@pytest.mark.parametrize(
+    ("heartbeat_archive", "expected_state", "expected_runtime", "expected_healthy"),
+    [
+        (
+            {"configured": True, "runtime_enabled": True, "status": "active"},
+            "active",
+            True,
+            True,
+        ),
+        (
+            {"configured": True, "runtime_enabled": False, "status": "degraded"},
+            "degraded",
+            False,
+            False,
+        ),
+        (None, "unverified", None, False),
+    ],
+)
+def test_status_payload_reports_actual_full_archive_runtime_state(
+    monkeypatch,
+    tmp_path: Path,
+    heartbeat_archive,
+    expected_state,
+    expected_runtime,
+    expected_healthy,
+) -> None:
+    manager = _manager(tmp_path)
+    manager._ensure_runtime_dir()
+    heartbeat = {
+        "pid": 12345,
+        "last_tick": datetime.now(timezone.utc).isoformat(),
+        "sqlite_pending": 0,
+        "sqlite_pending_since": None,
+    }
+    if heartbeat_archive is not None:
+        heartbeat["full_archive"] = heartbeat_archive
+    manager.run_health_path.write_text(json.dumps(heartbeat), encoding="utf-8")
+    monkeypatch.setattr(manager, "_current_run", lambda: (True, 12345))
+    monkeypatch.setattr(
+        manager,
+        "_config_health",
+        lambda: (True, True, 30, False, None),
+    )
+    monkeypatch.setattr(
+        manager,
+        "_load_config",
+        lambda: (
+            SimpleNamespace(full_archive=SimpleNamespace(enabled=True)),
+            None,
+        ),
+    )
+
+    payload = manager.status_payload()
+
+    assert payload["full_archive"] == {
+        "configured": True,
+        "runtime_enabled": expected_runtime,
+        "status": expected_state,
+    }
+    assert payload["healthy"] is expected_healthy
+    if expected_state == "degraded":
+        assert "Full Archive live capture is disabled" in payload["status"]
+    elif expected_state == "unverified":
+        assert "Full Archive runtime status is unavailable" in payload["status"]
+
+
+def test_status_payload_marks_archive_config_changed_since_daemon_start(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    manager = _manager(tmp_path)
+    manager._ensure_runtime_dir()
+    manager.run_health_path.write_text(
+        json.dumps(
+            {
+                "pid": 12345,
+                "last_tick": datetime.now(timezone.utc).isoformat(),
+                "sqlite_pending": 0,
+                "sqlite_pending_since": None,
+                "full_archive": {
+                    "configured": False,
+                    "runtime_enabled": False,
+                    "status": "disabled",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(manager, "_current_run", lambda: (True, 12345))
+    monkeypatch.setattr(manager, "_config_health", lambda: (True, True, 30, False, None))
+    monkeypatch.setattr(
+        manager,
+        "_load_config",
+        lambda: (SimpleNamespace(full_archive=SimpleNamespace(enabled=True)), None),
+    )
+
+    payload = manager.status_payload()
+
+    assert payload["full_archive"] == {
+        "configured": True,
+        "runtime_enabled": False,
+        "status": "restart_required",
+    }
+    assert payload["healthy"] is False
+    assert "restart the daemon" in payload["status"]
+
+
 def test_current_run_clears_pid_when_process_identity_mismatch(monkeypatch, tmp_path: Path) -> None:
     manager = _manager(tmp_path)
     manager._ensure_runtime_dir()

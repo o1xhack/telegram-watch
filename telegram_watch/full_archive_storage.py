@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import os
 from pathlib import Path
+import re
 import sqlite3
 
 REQUIRED_SHARD_INDEXES = (
@@ -19,6 +20,11 @@ ADDITIVE_MANIFEST_TABLES = ("tracked_db_links",)
 CORE_SHARD_TABLES = ("archive_messages", "archive_tracked_links")
 ADDITIVE_SHARD_TABLES = ("archive_media", "archive_senders")
 ARCHIVE_CONTEXT_MEDIA_ID_CHUNK_SIZE = 500
+_ARCHIVE_GROUP_DIRECTORY_RE = re.compile(r"group_-?[1-9][0-9]*")
+_ARCHIVE_SHARD_FILENAME_RE = re.compile(
+    r"(?P<year>[0-9]{4})-(?P<month>0[1-9]|1[0-2])"
+    r"(?:-(?P<sequence>[0-9]{3,}))?\.sqlite3"
+)
 
 
 @dataclass(frozen=True)
@@ -1836,13 +1842,25 @@ def _orphaned_shard_files(root_dir: Path) -> tuple[Path, ...]:
     shards_dir = root_dir / "shards"
     if not shards_dir.is_dir():
         return ()
-    return tuple(
-        sorted(
-            path
-            for path in shards_dir.rglob("*.sqlite3")
-            if path.is_file()
-        )
-    )
+    candidates: list[Path] = []
+    for group_dir in shards_dir.iterdir():
+        if (
+            group_dir.is_symlink()
+            or not group_dir.is_dir()
+            or _ARCHIVE_GROUP_DIRECTORY_RE.fullmatch(group_dir.name) is None
+        ):
+            continue
+        for path in group_dir.iterdir():
+            match = _ARCHIVE_SHARD_FILENAME_RE.fullmatch(path.name)
+            if match is None or not path.is_file():
+                continue
+            if int(match.group("year")) == 0:
+                continue
+            sequence = match.group("sequence")
+            if sequence is not None and int(sequence) < 2:
+                continue
+            candidates.append(path)
+    return tuple(sorted(candidates))
 
 
 def _orphaned_shard_errors(orphaned_shards: tuple[Path, ...]) -> tuple[str, ...]:

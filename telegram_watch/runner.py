@@ -116,12 +116,15 @@ class _RunnerHealthLoop:
         path: Path,
         sqlite_gate: _AsyncSqliteGate,
         *,
+        full_archive_configured: bool = False,
         interval_seconds: float = RUNNER_HEALTH_INTERVAL_SECONDS,
     ) -> None:
         self.path = path
         self.sqlite_gate = sqlite_gate
         self.interval_seconds = interval_seconds
         self.started_at = utc_now()
+        self.full_archive_configured = full_archive_configured
+        self.full_archive_runtime_enabled = False
         self._task: asyncio.Task[None] | None = None
 
     def start(self) -> None:
@@ -154,6 +157,15 @@ class _RunnerHealthLoop:
                 else None
             ),
             "sqlite_last_success": self.sqlite_gate.last_success_at.isoformat(),
+            "full_archive": {
+                "configured": self.full_archive_configured,
+                "runtime_enabled": self.full_archive_runtime_enabled,
+                "status": (
+                    "active"
+                    if self.full_archive_runtime_enabled
+                    else "degraded" if self.full_archive_configured else "disabled"
+                ),
+            },
         }
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temp_path = self.path.with_suffix(self.path.suffix + ".tmp")
@@ -844,7 +856,11 @@ async def run_daemon(
     logger.info("Logged in as %s", getattr(me, "username", self_user_id))
     sqlite_gate = _AsyncSqliteGate()
     health_loop = (
-        _RunnerHealthLoop(health_path, sqlite_gate)
+        _RunnerHealthLoop(
+            health_path,
+            sqlite_gate,
+            full_archive_configured=config.full_archive.enabled,
+        )
         if health_path is not None
         else None
     )
@@ -917,6 +933,8 @@ async def run_daemon(
     )
 
     archive_runtime_enabled = _full_archive_runtime_enabled(config)
+    if health_loop is not None:
+        health_loop.full_archive_runtime_enabled = archive_runtime_enabled
     target_handlers: list[_TargetHandler] = []
     for target in config.targets:
         target_handler = _TargetHandler(

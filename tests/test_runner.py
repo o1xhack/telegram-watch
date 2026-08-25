@@ -4,6 +4,7 @@ import asyncio
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+import json
 import logging
 import shutil
 import sqlite3
@@ -61,6 +62,38 @@ async def test_async_sqlite_gate_serializes_blocking_work() -> None:
     assert peak_active == 1
     assert gate.pending == 0
     assert gate.pending_since is None
+
+
+@pytest.mark.parametrize(
+    ("configured", "runtime_enabled", "expected_status"),
+    [
+        (False, False, "disabled"),
+        (True, True, "active"),
+        (True, False, "degraded"),
+    ],
+)
+def test_runner_health_heartbeat_reports_actual_full_archive_state(
+    tmp_path: Path,
+    configured: bool,
+    runtime_enabled: bool,
+    expected_status: str,
+) -> None:
+    health_path = tmp_path / "run.health.json"
+    health_loop = runner._RunnerHealthLoop(
+        health_path,
+        runner._AsyncSqliteGate(),
+        full_archive_configured=configured,
+    )
+    health_loop.full_archive_runtime_enabled = runtime_enabled
+
+    health_loop._write()
+
+    payload = json.loads(health_path.read_text(encoding="utf-8"))
+    assert payload["full_archive"] == {
+        "configured": configured,
+        "runtime_enabled": runtime_enabled,
+        "status": expected_status,
+    }
 
 
 def build_config(tmp_path: Path) -> Config:
@@ -2003,7 +2036,8 @@ async def test_run_daemon_registers_full_archive_handler_when_enabled(
     monkeypatch.setattr(runner, "_start_client", fake_start_client)
     monkeypatch.setattr(runner, "_run_with_reconnect", fake_run_with_reconnect)
 
-    await runner.run_daemon(config)
+    health_path = tmp_path / "run.health.json"
+    await runner.run_daemon(config, health_path=health_path)
 
     archive_events = [
         event
@@ -2015,6 +2049,12 @@ async def test_run_daemon_registers_full_archive_handler_when_enabled(
     assert any(
         isinstance(event, runner.events.MessageEdited) for event in archive_events
     )
+    health = json.loads(health_path.read_text(encoding="utf-8"))
+    assert health["full_archive"] == {
+        "configured": True,
+        "runtime_enabled": True,
+        "status": "active",
+    }
 
 
 def test_full_archive_runtime_migrates_sender_only_schema_before_health_gate(
@@ -2115,7 +2155,8 @@ async def test_run_daemon_skips_full_archive_handlers_when_archive_degraded(
     )
 
     with caplog.at_level(logging.WARNING):
-        await runner.run_daemon(config)
+        health_path = tmp_path / "run.health.json"
+        await runner.run_daemon(config, health_path=health_path)
 
     target_handlers = [
         getattr(callback, "__self__", None)
@@ -2130,6 +2171,12 @@ async def test_run_daemon_skips_full_archive_handlers_when_archive_degraded(
     )
     assert "Full archive live capture disabled" in caplog.text
     assert "hidden shard data" in caplog.text
+    health = json.loads(health_path.read_text(encoding="utf-8"))
+    assert health["full_archive"] == {
+        "configured": True,
+        "runtime_enabled": False,
+        "status": "degraded",
+    }
 
 
 @pytest.mark.asyncio

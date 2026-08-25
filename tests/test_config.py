@@ -190,10 +190,12 @@ def test_full_archive_cr_audit_documents_non_real_tg_evidence():
 
 
 def test_full_archive_release_metadata_is_prepared():
-    assert __version__ == "1.8.0"
+    assert __version__ == "1.8.1"
 
     changelog = (REPO_ROOT / "docs/CHANGELOG.md").read_text(encoding="utf-8")
     for required in (
+        "## 1.8.1 — 2026-08-24",
+        "recognizing only canonical archive shard paths",
         "## 1.8.0 — 2026-07-15",
         "serializing all daemon SQLite work",
         "health heartbeat",
