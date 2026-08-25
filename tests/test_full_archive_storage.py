@@ -5,6 +5,8 @@ import shutil
 import sqlite3
 from time import perf_counter
 
+import pytest
+
 from telegram_watch import storage as tracked_storage
 from telegram_watch import full_archive_storage as archive_storage
 
@@ -331,6 +333,65 @@ def test_inspect_archive_status_degrades_orphaned_shards_without_manifest(tmp_pa
         "archive root has shard file(s) but no manifest (count=1)",
     )
     assert str(orphaned_shard) not in " ".join(report.errors)
+    assert report.degraded is True
+
+
+@pytest.mark.parametrize("manifest_exists", [False, True])
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "tgwatch.sqlite3",
+        "group_-1001/tgwatch.sqlite3",
+        "group_-1001/2026-00.sqlite3",
+        "group_-1001/2026-13.sqlite3",
+        "group_-1001/2026-05-001.sqlite3",
+        "group_-1001/2026-05-0002.sqlite3",
+        "group_-1001/2026-05-01000.sqlite3",
+        "group_-1001/nested/2026-05.sqlite3",
+        "group_invalid/2026-05.sqlite3",
+        "backup/2026-05.sqlite3",
+    ],
+)
+def test_inspect_archive_status_ignores_non_shard_sqlite_files(
+    tmp_path,
+    manifest_exists,
+    relative_path,
+):
+    root_dir = tmp_path / "full_archive"
+    unrelated_sqlite = root_dir / "shards" / relative_path
+    unrelated_sqlite.parent.mkdir(parents=True)
+    unrelated_sqlite.touch()
+    if manifest_exists:
+        manifest = archive_storage.connect(root_dir / "manifest.sqlite3")
+        try:
+            archive_storage.ensure_manifest_schema(manifest)
+        finally:
+            manifest.close()
+
+    report = archive_storage.inspect_archive_status(root_dir)
+
+    assert report.manifest_exists is manifest_exists
+    assert report.errors == ()
+    assert report.degraded is False
+
+
+@pytest.mark.parametrize("sequence", ["002", "1000"])
+def test_inspect_archive_status_preserves_zero_byte_canonical_orphan(
+    tmp_path,
+    sequence,
+):
+    root_dir = tmp_path / "full_archive"
+    orphaned_shard = (
+        root_dir / "shards" / "group_-1001" / f"2026-05-{sequence}.sqlite3"
+    )
+    orphaned_shard.parent.mkdir(parents=True)
+    orphaned_shard.touch()
+
+    report = archive_storage.inspect_archive_status(root_dir)
+
+    assert report.errors == (
+        "archive root has shard file(s) but no manifest (count=1)",
+    )
     assert report.degraded is True
 
 

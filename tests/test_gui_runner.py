@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -8,8 +9,9 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pytest
 
-from telegram_watch.config import ConfigError
+from telegram_watch.config import ConfigError, FullArchiveConfig
 from telegram_watch.gui import (
+    _JS,
     _RunnerManager,
     _TIME_FORMAT_UNITS,
     _build_timezone_presets,
@@ -224,6 +226,362 @@ def test_status_payload_marks_long_sqlite_queue_as_stalled(
     assert payload["healthy"] is False
     assert payload["stalled"] is True
     assert "SQLite made no progress" in payload["status"]
+
+
+@pytest.mark.parametrize(
+    ("heartbeat_archive", "expected_state", "expected_runtime", "expected_healthy"),
+    [
+        (
+            {
+                "configured": True,
+                "runtime_enabled": True,
+                "status": "active",
+                "config_fingerprint": "archive-config-v1",
+            },
+            "active",
+            True,
+            True,
+        ),
+        (
+            {
+                "configured": True,
+                "runtime_enabled": False,
+                "status": "degraded",
+                "config_fingerprint": "archive-config-v1",
+            },
+            "degraded",
+            False,
+            False,
+        ),
+        (None, "unverified", None, False),
+    ],
+)
+def test_status_payload_reports_actual_full_archive_runtime_state(
+    monkeypatch,
+    tmp_path: Path,
+    heartbeat_archive,
+    expected_state,
+    expected_runtime,
+    expected_healthy,
+) -> None:
+    manager = _manager(tmp_path)
+    manager._ensure_runtime_dir()
+    heartbeat = {
+        "pid": 12345,
+        "last_tick": datetime.now(timezone.utc).isoformat(),
+        "sqlite_pending": 0,
+        "sqlite_pending_since": None,
+    }
+    if heartbeat_archive is not None:
+        heartbeat["full_archive"] = heartbeat_archive
+    manager.run_health_path.write_text(json.dumps(heartbeat), encoding="utf-8")
+    monkeypatch.setattr(manager, "_current_run", lambda: (True, 12345))
+    monkeypatch.setattr(
+        manager,
+        "_config_health",
+        lambda: (True, True, 30, False, None),
+    )
+    monkeypatch.setattr(
+        manager,
+        "_load_config",
+        lambda: (
+            SimpleNamespace(
+                full_archive=SimpleNamespace(
+                    enabled=True,
+                    runtime_fingerprint="archive-config-v1",
+                )
+            ),
+            None,
+        ),
+    )
+
+    payload = manager.status_payload()
+
+    assert payload["full_archive"] == {
+        "configured": True,
+        "runtime_enabled": expected_runtime,
+        "status": expected_state,
+    }
+    assert payload["healthy"] is expected_healthy
+    if expected_state == "degraded":
+        assert "Full Archive live capture is disabled" in payload["status"]
+    elif expected_state == "unverified":
+        assert "Full Archive runtime status is unavailable" in payload["status"]
+
+
+def test_status_payload_marks_archive_config_changed_since_daemon_start(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    manager = _manager(tmp_path)
+    manager._ensure_runtime_dir()
+    manager.run_health_path.write_text(
+        json.dumps(
+            {
+                "pid": 12345,
+                "last_tick": datetime.now(timezone.utc).isoformat(),
+                "sqlite_pending": 0,
+                "sqlite_pending_since": None,
+                "full_archive": {
+                    "configured": False,
+                    "runtime_enabled": False,
+                    "status": "disabled",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(manager, "_current_run", lambda: (True, 12345))
+    monkeypatch.setattr(manager, "_config_health", lambda: (True, True, 30, False, None))
+    monkeypatch.setattr(
+        manager,
+        "_load_config",
+        lambda: (SimpleNamespace(full_archive=SimpleNamespace(enabled=True)), None),
+    )
+
+    payload = manager.status_payload()
+
+    assert payload["full_archive"] == {
+        "configured": True,
+        "runtime_enabled": False,
+        "status": "restart_required",
+    }
+    assert payload["healthy"] is False
+    assert "restart the daemon" in payload["status"]
+    assert "not active" in payload["status"]
+
+
+@pytest.mark.parametrize(
+    ("field_name", "changed_value"),
+    [
+        ("root_dir", Path("another-archive")),
+        ("source_chat_id", -2002),
+        ("capture_scope", "whole_group"),
+        ("topic_ids", (20, 30)),
+        ("shard_policy", "daily"),
+        ("max_messages_per_shard", 123_456),
+        ("max_shard_size_mb", 512),
+        ("backfill_limit_messages", 2_000),
+    ],
+)
+def test_status_payload_requires_restart_when_archive_settings_change(
+    monkeypatch,
+    tmp_path: Path,
+    field_name,
+    changed_value,
+) -> None:
+    manager = _manager(tmp_path)
+    manager._ensure_runtime_dir()
+    startup_archive = replace(
+        FullArchiveConfig.disabled(),
+        enabled=True,
+        root_dir=tmp_path / "archive",
+        source_chat_id=-1001,
+        capture_scope="topics",
+        topic_ids=(10, 20),
+    )
+    current_archive = replace(startup_archive, **{field_name: changed_value})
+    manager.run_health_path.write_text(
+        json.dumps(
+            {
+                "pid": 12345,
+                "last_tick": datetime.now(timezone.utc).isoformat(),
+                "sqlite_pending": 0,
+                "sqlite_pending_since": None,
+                "full_archive": {
+                    "configured": True,
+                    "runtime_enabled": True,
+                    "status": "active",
+                    "config_fingerprint": startup_archive.runtime_fingerprint,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(manager, "_current_run", lambda: (True, 12345))
+    monkeypatch.setattr(manager, "_config_health", lambda: (True, True, 30, False, None))
+    monkeypatch.setattr(
+        manager,
+        "_load_config",
+        lambda: (SimpleNamespace(full_archive=current_archive), None),
+    )
+
+    payload = manager.status_payload()
+
+    assert payload["full_archive"] == {
+        "configured": True,
+        "runtime_enabled": True,
+        "status": "restart_required",
+    }
+    assert payload["healthy"] is False
+    assert "restart the daemon" in payload["status"]
+    assert "still capturing with its startup configuration" in payload["status"]
+
+
+def test_status_payload_warns_when_opted_out_archive_is_still_capturing(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    manager = _manager(tmp_path)
+    manager._ensure_runtime_dir()
+    startup_archive = replace(
+        FullArchiveConfig.disabled(),
+        enabled=True,
+        root_dir=tmp_path / "archive",
+        source_chat_id=-1001,
+    )
+    current_archive = replace(startup_archive, enabled=False)
+    manager.run_health_path.write_text(
+        json.dumps(
+            {
+                "pid": 12345,
+                "last_tick": datetime.now(timezone.utc).isoformat(),
+                "sqlite_pending": 0,
+                "sqlite_pending_since": None,
+                "full_archive": {
+                    "configured": True,
+                    "runtime_enabled": True,
+                    "status": "active",
+                    "config_fingerprint": startup_archive.runtime_fingerprint,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(manager, "_current_run", lambda: (True, 12345))
+    monkeypatch.setattr(manager, "_config_health", lambda: (True, True, 30, False, None))
+    monkeypatch.setattr(
+        manager,
+        "_load_config",
+        lambda: (SimpleNamespace(full_archive=current_archive), None),
+    )
+
+    payload = manager.status_payload()
+
+    assert payload["full_archive"] == {
+        "configured": False,
+        "runtime_enabled": True,
+        "status": "restart_required",
+    }
+    assert payload["healthy"] is False
+    assert "still capturing with its startup configuration" in payload["status"]
+
+
+@pytest.mark.parametrize(
+    ("changed_settings", "expected_configured"),
+    [
+        ({"root_dir": Path("another-archive")}, True),
+        ({"enabled": False}, False),
+    ],
+)
+def test_status_payload_preserves_archive_degradation_after_config_drift(
+    monkeypatch,
+    tmp_path: Path,
+    changed_settings,
+    expected_configured,
+) -> None:
+    manager = _manager(tmp_path)
+    manager._ensure_runtime_dir()
+    startup_archive = replace(
+        FullArchiveConfig.disabled(),
+        enabled=True,
+        root_dir=tmp_path / "archive",
+        source_chat_id=-1001,
+    )
+    current_archive = replace(startup_archive, **changed_settings)
+    manager.run_health_path.write_text(
+        json.dumps(
+            {
+                "pid": 12345,
+                "last_tick": datetime.now(timezone.utc).isoformat(),
+                "sqlite_pending": 0,
+                "sqlite_pending_since": None,
+                "full_archive": {
+                    "configured": True,
+                    "runtime_enabled": False,
+                    "status": "degraded",
+                    "config_fingerprint": startup_archive.runtime_fingerprint,
+                    "consecutive_write_failures": 3,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(manager, "_current_run", lambda: (True, 12345))
+    monkeypatch.setattr(manager, "_config_health", lambda: (True, True, 30, False, None))
+    monkeypatch.setattr(
+        manager,
+        "_load_config",
+        lambda: (SimpleNamespace(full_archive=current_archive), None),
+    )
+
+    payload = manager.status_payload()
+
+    assert payload["full_archive"] == {
+        "configured": expected_configured,
+        "runtime_enabled": False,
+        "status": "degraded",
+    }
+    assert payload["healthy"] is False
+    assert "archive-status and archive-repair --dry-run" in payload["status"]
+
+
+def test_status_payload_does_not_assume_legacy_daemon_stopped_after_archive_opt_out(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    manager = _manager(tmp_path)
+    manager._ensure_runtime_dir()
+    manager.run_health_path.write_text(
+        json.dumps(
+            {
+                "pid": 12345,
+                "last_tick": datetime.now(timezone.utc).isoformat(),
+                "sqlite_pending": 0,
+                "sqlite_pending_since": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(manager, "_current_run", lambda: (True, 12345))
+    monkeypatch.setattr(manager, "_config_health", lambda: (True, True, 30, False, None))
+    monkeypatch.setattr(
+        manager,
+        "_load_config",
+        lambda: (
+            SimpleNamespace(full_archive=FullArchiveConfig.disabled()),
+            None,
+        ),
+    )
+
+    payload = manager.status_payload()
+
+    assert payload["full_archive"] == {
+        "configured": False,
+        "runtime_enabled": None,
+        "status": "unverified",
+    }
+    assert payload["healthy"] is False
+    assert "Full Archive runtime status is unavailable" in payload["status"]
+
+
+def test_gui_javascript_distinguishes_active_archive_drift_from_disabled_capture() -> None:
+    runner_status = _JS.split("const runnerStatusText = ", 1)[1].split(
+        "const fullArchiveStatusText = ",
+        1,
+    )[0]
+    archive_status = _JS.split("const fullArchiveStatusText = ", 1)[1].split(
+        "const runnerMessageText = ",
+        1,
+    )[0]
+
+    assert "runner.full_archive && runner.full_archive.configured" not in runner_status
+    assert 'status === "degraded" ||' not in runner_status
+    assert 'tf("archivePreviousConfigPid"' in runner_status
+    assert 'tf("archiveRestartRequiredPid"' in runner_status
+    assert 't("archiveStatusRestartRequiredActive")' in archive_status
+    assert "still capturing with previous settings" in _JS
+    assert "仍按旧配置归档" in _JS
 
 
 def test_current_run_clears_pid_when_process_identity_mismatch(monkeypatch, tmp_path: Path) -> None:

@@ -1,10 +1,11 @@
+from dataclasses import replace
 from pathlib import Path
 from textwrap import dedent
 
 import pytest
 
 from telegram_watch import __version__
-from telegram_watch.config import ConfigError, load_config
+from telegram_watch.config import ConfigError, FullArchiveConfig, load_config
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -120,6 +121,43 @@ def test_config_example_parses_with_full_archive_disabled():
 
 
 @pytest.mark.parametrize(
+    ("field_name", "changed_value"),
+    [
+        ("enabled", False),
+        ("root_dir", Path("another-archive")),
+        ("source_chat_id", -2002),
+        ("capture_scope", "whole_group"),
+        ("topic_ids", (20, 30)),
+        ("shard_policy", "daily"),
+        ("max_messages_per_shard", 123_456),
+        ("max_shard_size_mb", 512),
+        ("backfill_limit_messages", 2_000),
+    ],
+)
+def test_full_archive_fingerprint_covers_all_runtime_settings(
+    tmp_path,
+    field_name,
+    changed_value,
+):
+    archive = replace(
+        FullArchiveConfig.disabled(),
+        enabled=True,
+        root_dir=tmp_path / "archive",
+        source_chat_id=-1001,
+        capture_scope="topics",
+        topic_ids=(10, 20),
+    )
+
+    original = archive.runtime_fingerprint
+    changed = replace(archive, **{field_name: changed_value}).runtime_fingerprint
+
+    assert len(original) == 64
+    assert original != changed
+    assert str(archive.root_dir) not in original
+    assert str(archive.source_chat_id) not in original
+
+
+@pytest.mark.parametrize(
     "doc_path",
     [
         "docs/configuration.md",
@@ -190,10 +228,12 @@ def test_full_archive_cr_audit_documents_non_real_tg_evidence():
 
 
 def test_full_archive_release_metadata_is_prepared():
-    assert __version__ == "1.8.0"
+    assert __version__ == "1.8.1"
 
     changelog = (REPO_ROOT / "docs/CHANGELOG.md").read_text(encoding="utf-8")
     for required in (
+        "## 1.8.1 — 2026-08-24",
+        "recognizing only canonical archive shard paths",
         "## 1.8.0 — 2026-07-15",
         "serializing all daemon SQLite work",
         "health heartbeat",

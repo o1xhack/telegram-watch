@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -127,6 +129,28 @@ class FullArchiveConfig:
     @property
     def max_shard_size_bytes(self) -> int:
         return self.max_shard_size_mb * 1024 * 1024
+
+    @property
+    def runtime_fingerprint(self) -> str:
+        """Return a privacy-safe fingerprint of every archive runtime setting."""
+        payload = {
+            "enabled": self.enabled,
+            "root_dir": str(self.root_dir.resolve()),
+            "source_chat_id": self.source_chat_id,
+            "capture_scope": self.capture_scope,
+            "topic_ids": self.topic_ids,
+            "shard_policy": self.shard_policy,
+            "max_messages_per_shard": self.max_messages_per_shard,
+            "max_shard_size_mb": self.max_shard_size_mb,
+            "backfill_limit_messages": self.backfill_limit_messages,
+        }
+        encoded = json.dumps(
+            payload,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
 
     @classmethod
     def disabled(cls) -> "FullArchiveConfig":
