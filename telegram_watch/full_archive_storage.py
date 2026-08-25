@@ -1857,8 +1857,10 @@ def _orphaned_shard_files(root_dir: Path) -> tuple[Path, ...]:
             if int(match.group("year")) == 0:
                 continue
             sequence = match.group("sequence")
-            if sequence is not None and int(sequence) < 2:
-                continue
+            if sequence is not None:
+                sequence_number = int(sequence)
+                if sequence_number < 2 or sequence != f"{sequence_number:03d}":
+                    continue
             candidates.append(path)
     return tuple(sorted(candidates))
 

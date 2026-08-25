@@ -467,6 +467,45 @@ def test_status_payload_warns_when_opted_out_archive_is_still_capturing(
     assert "still capturing with its startup configuration" in payload["status"]
 
 
+def test_status_payload_does_not_assume_legacy_daemon_stopped_after_archive_opt_out(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    manager = _manager(tmp_path)
+    manager._ensure_runtime_dir()
+    manager.run_health_path.write_text(
+        json.dumps(
+            {
+                "pid": 12345,
+                "last_tick": datetime.now(timezone.utc).isoformat(),
+                "sqlite_pending": 0,
+                "sqlite_pending_since": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(manager, "_current_run", lambda: (True, 12345))
+    monkeypatch.setattr(manager, "_config_health", lambda: (True, True, 30, False, None))
+    monkeypatch.setattr(
+        manager,
+        "_load_config",
+        lambda: (
+            SimpleNamespace(full_archive=FullArchiveConfig.disabled()),
+            None,
+        ),
+    )
+
+    payload = manager.status_payload()
+
+    assert payload["full_archive"] == {
+        "configured": False,
+        "runtime_enabled": None,
+        "status": "unverified",
+    }
+    assert payload["healthy"] is False
+    assert "Full Archive runtime status is unavailable" in payload["status"]
+
+
 def test_gui_javascript_distinguishes_active_archive_drift_from_disabled_capture() -> None:
     runner_status = _JS.split("const runnerStatusText = ", 1)[1].split(
         "const fullArchiveStatusText = ",

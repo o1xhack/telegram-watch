@@ -345,6 +345,8 @@ def test_inspect_archive_status_degrades_orphaned_shards_without_manifest(tmp_pa
         "group_-1001/2026-00.sqlite3",
         "group_-1001/2026-13.sqlite3",
         "group_-1001/2026-05-001.sqlite3",
+        "group_-1001/2026-05-0002.sqlite3",
+        "group_-1001/2026-05-01000.sqlite3",
         "group_-1001/nested/2026-05.sqlite3",
         "group_invalid/2026-05.sqlite3",
         "backup/2026-05.sqlite3",
@@ -373,9 +375,15 @@ def test_inspect_archive_status_ignores_non_shard_sqlite_files(
     assert report.degraded is False
 
 
-def test_inspect_archive_status_preserves_zero_byte_canonical_orphan(tmp_path):
+@pytest.mark.parametrize("sequence", ["002", "1000"])
+def test_inspect_archive_status_preserves_zero_byte_canonical_orphan(
+    tmp_path,
+    sequence,
+):
     root_dir = tmp_path / "full_archive"
-    orphaned_shard = root_dir / "shards" / "group_-1001" / "2026-05-002.sqlite3"
+    orphaned_shard = (
+        root_dir / "shards" / "group_-1001" / f"2026-05-{sequence}.sqlite3"
+    )
     orphaned_shard.parent.mkdir(parents=True)
     orphaned_shard.touch()
 

@@ -2546,10 +2546,10 @@ class _RunnerManager:
         if not isinstance(reported, dict):
             return {
                 "configured": configured,
-                "runtime_enabled": None if configured and running else False,
+                "runtime_enabled": None if running else False,
                 "status": (
                     "unverified"
-                    if configured and running
+                    if running
                     else "stopped" if configured else "disabled"
                 ),
             }
