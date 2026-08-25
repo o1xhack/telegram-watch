@@ -467,6 +467,65 @@ def test_status_payload_warns_when_opted_out_archive_is_still_capturing(
     assert "still capturing with its startup configuration" in payload["status"]
 
 
+@pytest.mark.parametrize(
+    ("changed_settings", "expected_configured"),
+    [
+        ({"root_dir": Path("another-archive")}, True),
+        ({"enabled": False}, False),
+    ],
+)
+def test_status_payload_preserves_archive_degradation_after_config_drift(
+    monkeypatch,
+    tmp_path: Path,
+    changed_settings,
+    expected_configured,
+) -> None:
+    manager = _manager(tmp_path)
+    manager._ensure_runtime_dir()
+    startup_archive = replace(
+        FullArchiveConfig.disabled(),
+        enabled=True,
+        root_dir=tmp_path / "archive",
+        source_chat_id=-1001,
+    )
+    current_archive = replace(startup_archive, **changed_settings)
+    manager.run_health_path.write_text(
+        json.dumps(
+            {
+                "pid": 12345,
+                "last_tick": datetime.now(timezone.utc).isoformat(),
+                "sqlite_pending": 0,
+                "sqlite_pending_since": None,
+                "full_archive": {
+                    "configured": True,
+                    "runtime_enabled": False,
+                    "status": "degraded",
+                    "config_fingerprint": startup_archive.runtime_fingerprint,
+                    "consecutive_write_failures": 3,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(manager, "_current_run", lambda: (True, 12345))
+    monkeypatch.setattr(manager, "_config_health", lambda: (True, True, 30, False, None))
+    monkeypatch.setattr(
+        manager,
+        "_load_config",
+        lambda: (SimpleNamespace(full_archive=current_archive), None),
+    )
+
+    payload = manager.status_payload()
+
+    assert payload["full_archive"] == {
+        "configured": expected_configured,
+        "runtime_enabled": False,
+        "status": "degraded",
+    }
+    assert payload["healthy"] is False
+    assert "archive-status and archive-repair --dry-run" in payload["status"]
+
+
 def test_status_payload_does_not_assume_legacy_daemon_stopped_after_archive_opt_out(
     monkeypatch,
     tmp_path: Path,

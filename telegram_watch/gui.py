@@ -2562,7 +2562,9 @@ class _RunnerManager:
                 "runtime_enabled": None,
                 "status": "unverified",
             }
-        if configured != daemon_configured:
+        if running and daemon_configured and not runtime_enabled:
+            status = "degraded"
+        elif configured != daemon_configured:
             status = "restart_required"
         elif configured:
             reported_fingerprint = reported.get("config_fingerprint")
