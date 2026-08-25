@@ -5,7 +5,7 @@
 > Entries are arranged from newest to oldest so the latest release notes stay at the top. Each bullet references the requirement(s) that introduced the change.
 
 ## 1.8.1 — 2026-08-24
-- Prevent unrelated SQLite files from disabling Full Archive capture by recognizing only canonical archive shard paths, while preserving fail-closed handling for genuine orphaned shards and showing actual archive runtime health plus privacy-safe configuration drift in the daemon heartbeat and GUI.
+- Prevent unrelated SQLite files from disabling Full Archive capture by recognizing only canonical archive shard paths, while preserving fail-closed handling for genuine orphaned shards and showing actual archive runtime health, repeated write failures, and privacy-safe configuration drift in the daemon heartbeat and GUI.
 
 ## 1.8.0 — 2026-07-15
 - Prevent long-running forwarding stalls by serializing all daemon SQLite work off the asyncio event loop and avoiding redundant WAL mode changes on routine connections.

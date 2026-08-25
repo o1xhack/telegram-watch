@@ -418,6 +418,55 @@ def test_status_payload_requires_restart_when_archive_settings_change(
     assert "still capturing with its startup configuration" in payload["status"]
 
 
+def test_status_payload_warns_when_opted_out_archive_is_still_capturing(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    manager = _manager(tmp_path)
+    manager._ensure_runtime_dir()
+    startup_archive = replace(
+        FullArchiveConfig.disabled(),
+        enabled=True,
+        root_dir=tmp_path / "archive",
+        source_chat_id=-1001,
+    )
+    current_archive = replace(startup_archive, enabled=False)
+    manager.run_health_path.write_text(
+        json.dumps(
+            {
+                "pid": 12345,
+                "last_tick": datetime.now(timezone.utc).isoformat(),
+                "sqlite_pending": 0,
+                "sqlite_pending_since": None,
+                "full_archive": {
+                    "configured": True,
+                    "runtime_enabled": True,
+                    "status": "active",
+                    "config_fingerprint": startup_archive.runtime_fingerprint,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(manager, "_current_run", lambda: (True, 12345))
+    monkeypatch.setattr(manager, "_config_health", lambda: (True, True, 30, False, None))
+    monkeypatch.setattr(
+        manager,
+        "_load_config",
+        lambda: (SimpleNamespace(full_archive=current_archive), None),
+    )
+
+    payload = manager.status_payload()
+
+    assert payload["full_archive"] == {
+        "configured": False,
+        "runtime_enabled": True,
+        "status": "restart_required",
+    }
+    assert payload["healthy"] is False
+    assert "still capturing with its startup configuration" in payload["status"]
+
+
 def test_gui_javascript_distinguishes_active_archive_drift_from_disabled_capture() -> None:
     runner_status = _JS.split("const runnerStatusText = ", 1)[1].split(
         "const fullArchiveStatusText = ",
@@ -428,6 +477,7 @@ def test_gui_javascript_distinguishes_active_archive_drift_from_disabled_capture
         1,
     )[0]
 
+    assert "runner.full_archive && runner.full_archive.configured" not in runner_status
     assert 'status === "degraded" ||' not in runner_status
     assert 'tf("archivePreviousConfigPid"' in runner_status
     assert 'tf("archiveRestartRequiredPid"' in runner_status

@@ -95,6 +95,7 @@ def test_runner_health_heartbeat_reports_actual_full_archive_state(
         "runtime_enabled": runtime_enabled,
         "status": expected_status,
         "config_fingerprint": "safe-archive-fingerprint",
+        "consecutive_write_failures": 0,
     }
 
 
@@ -1194,6 +1195,82 @@ async def test_full_archive_handler_swallows_storage_errors(
     assert "Full archive capture failed without stopping watcher" in caplog.text
 
 
+@pytest.mark.asyncio
+async def test_full_archive_handler_marks_heartbeat_degraded_after_repeated_write_failures(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    config = enable_full_archive(build_config(tmp_path), tmp_path)
+    health_path = tmp_path / "run.health.json"
+    health_loop = runner._RunnerHealthLoop(
+        health_path,
+        runner._AsyncSqliteGate(),
+        full_archive_configured=True,
+        full_archive_fingerprint=config.full_archive.runtime_fingerprint,
+    )
+    health_loop.full_archive_runtime_enabled = True
+    health_loop._write()
+    handler = runner._FullArchiveHandler(config, health_loop=health_loop)
+
+    def fail_persist(*_args, **_kwargs):
+        raise sqlite3.OperationalError("disk full")
+
+    monkeypatch.setattr(runner, "_persist_archive_message_to_storage", fail_persist)
+
+    for attempt in range(runner.FULL_ARCHIVE_CONSECUTIVE_FAILURE_LIMIT):
+        await handler.handle(
+            SimpleNamespace(message=make_archive_event_message(message_id=attempt + 1))
+        )
+
+    health = json.loads(health_path.read_text(encoding="utf-8"))
+    assert health["full_archive"]["runtime_enabled"] is False
+    assert health["full_archive"]["status"] == "degraded"
+    assert health["full_archive"]["consecutive_write_failures"] == (
+        runner.FULL_ARCHIVE_CONSECUTIVE_FAILURE_LIMIT
+    )
+
+
+@pytest.mark.asyncio
+async def test_full_archive_handler_restores_heartbeat_after_successful_write(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    config = enable_full_archive(build_config(tmp_path), tmp_path)
+    health_path = tmp_path / "run.health.json"
+    health_loop = runner._RunnerHealthLoop(
+        health_path,
+        runner._AsyncSqliteGate(),
+        full_archive_configured=True,
+        full_archive_fingerprint=config.full_archive.runtime_fingerprint,
+    )
+    health_loop.full_archive_runtime_enabled = True
+    health_loop._write()
+    handler = runner._FullArchiveHandler(config, health_loop=health_loop)
+
+    def fail_persist(*_args, **_kwargs):
+        raise sqlite3.OperationalError("disk full")
+
+    monkeypatch.setattr(runner, "_persist_archive_message_to_storage", fail_persist)
+    for attempt in range(runner.FULL_ARCHIVE_CONSECUTIVE_FAILURE_LIMIT):
+        await handler.handle(
+            SimpleNamespace(message=make_archive_event_message(message_id=attempt + 1))
+        )
+    monkeypatch.setattr(
+        runner,
+        "_persist_archive_message_to_storage",
+        lambda *_args, **_kwargs: None,
+    )
+
+    await handler.handle(
+        SimpleNamespace(message=make_archive_event_message(message_id=9))
+    )
+
+    health = json.loads(health_path.read_text(encoding="utf-8"))
+    assert health["full_archive"]["runtime_enabled"] is True
+    assert health["full_archive"]["status"] == "active"
+    assert health["full_archive"]["consecutive_write_failures"] == 0
+
+
 def test_archive_persist_does_not_record_tracked_db_link_when_shard_write_fails(
     monkeypatch,
     tmp_path: Path,
@@ -2057,6 +2134,7 @@ async def test_run_daemon_registers_full_archive_handler_when_enabled(
         "runtime_enabled": True,
         "status": "active",
         "config_fingerprint": config.full_archive.runtime_fingerprint,
+        "consecutive_write_failures": 0,
     }
 
 
@@ -2180,6 +2258,7 @@ async def test_run_daemon_skips_full_archive_handlers_when_archive_degraded(
         "runtime_enabled": False,
         "status": "degraded",
         "config_fingerprint": config.full_archive.runtime_fingerprint,
+        "consecutive_write_failures": 0,
     }
 
 

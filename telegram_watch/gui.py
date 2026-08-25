@@ -1257,7 +1257,7 @@ const runnerStatusText = (runner) => {
     if (runner.stalled) {
       return runner.pid ? tf("stalledPid", {pid: runner.pid}) : t("stalledPid");
     }
-    if (runner.full_archive && runner.full_archive.configured) {
+    if (runner.full_archive) {
       if (runner.full_archive.status === "degraded") {
         return runner.pid ? tf("archiveDisabledPid", {pid: runner.pid}) : t("archiveStatusDegraded");
       }

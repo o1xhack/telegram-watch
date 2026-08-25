@@ -75,6 +75,7 @@ ARCHIVE_BACKFILL_WAIT_THRESHOLD = 1_000
 ARCHIVE_BACKFILL_WAIT_TIME_SECONDS = 1.0
 ARCHIVE_RELINK_SHUTDOWN_TIMEOUT_SECONDS = 5.0
 ARCHIVE_SENDER_LOOKUP_RETRY_SECONDS = 60.0
+FULL_ARCHIVE_CONSECUTIVE_FAILURE_LIMIT = 3
 RUNNER_HEALTH_INTERVAL_SECONDS = 15.0
 
 
@@ -127,6 +128,7 @@ class _RunnerHealthLoop:
         self.full_archive_configured = full_archive_configured
         self.full_archive_fingerprint = full_archive_fingerprint
         self.full_archive_runtime_enabled = False
+        self.full_archive_consecutive_write_failures = 0
         self._task: asyncio.Task[None] | None = None
 
     def start(self) -> None:
@@ -146,6 +148,39 @@ class _RunnerHealthLoop:
         while True:
             await asyncio.sleep(self.interval_seconds)
             self._write()
+
+    def record_full_archive_write_failure(self) -> None:
+        if not self.full_archive_configured:
+            return
+        self.full_archive_consecutive_write_failures += 1
+        if (
+            self.full_archive_consecutive_write_failures
+            < FULL_ARCHIVE_CONSECUTIVE_FAILURE_LIMIT
+            or not self.full_archive_runtime_enabled
+        ):
+            return
+        self.full_archive_runtime_enabled = False
+        logger.warning(
+            "Full archive live capture degraded after %s consecutive write failures",
+            self.full_archive_consecutive_write_failures,
+        )
+        self._publish_full_archive_state()
+
+    def record_full_archive_write_success(self) -> None:
+        if self.full_archive_consecutive_write_failures == 0:
+            return
+        self.full_archive_consecutive_write_failures = 0
+        if self.full_archive_runtime_enabled:
+            return
+        self.full_archive_runtime_enabled = True
+        logger.info("Full archive live capture recovered after a successful write")
+        self._publish_full_archive_state()
+
+    def _publish_full_archive_state(self) -> None:
+        try:
+            self._write()
+        except OSError as exc:
+            logger.warning("Failed to publish full archive runtime health: %s", exc)
 
     def _write(self) -> None:
         payload = {
@@ -168,6 +203,9 @@ class _RunnerHealthLoop:
                     else "degraded" if self.full_archive_configured else "disabled"
                 ),
                 "config_fingerprint": self.full_archive_fingerprint,
+                "consecutive_write_failures": (
+                    self.full_archive_consecutive_write_failures
+                ),
             },
         }
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -955,7 +993,11 @@ async def run_daemon(
             events.NewMessage(chats=[target.target_chat_id]),
         )
     if archive_runtime_enabled:
-        full_archive_handler = _FullArchiveHandler(config, sqlite_gate=sqlite_gate)
+        full_archive_handler = _FullArchiveHandler(
+            config,
+            sqlite_gate=sqlite_gate,
+            health_loop=health_loop,
+        )
         client.add_event_handler(
             full_archive_handler.handle,
             events.NewMessage(chats=[config.full_archive.source_chat_id]),
@@ -1378,9 +1420,11 @@ class _FullArchiveHandler:
         config: Config,
         *,
         sqlite_gate: _AsyncSqliteGate | None = None,
+        health_loop: _RunnerHealthLoop | None = None,
     ):
         self.config = config
         self._sqlite_gate = sqlite_gate or _AsyncSqliteGate()
+        self._health_loop = health_loop
         self._sender_identity_cache: dict[int, _ArchiveSenderIdentity] = {}
         self._sender_lookup_retry_after: dict[int, float] = {}
         self._sender_lookup_tasks: dict[
@@ -1407,7 +1451,11 @@ class _FullArchiveHandler:
                 tracked_db_path=self.config.storage.db_path,
                 sender_snapshot=sender_snapshot,
             )
+            if self._health_loop is not None:
+                self._health_loop.record_full_archive_write_success()
         except Exception as exc:
+            if self._health_loop is not None:
+                self._health_loop.record_full_archive_write_failure()
             logger.warning(
                 "Full archive capture failed without stopping watcher: %s",
                 exc,
