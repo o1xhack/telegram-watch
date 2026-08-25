@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -8,7 +9,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pytest
 
-from telegram_watch.config import ConfigError
+from telegram_watch.config import ConfigError, FullArchiveConfig
 from telegram_watch.gui import (
     _RunnerManager,
     _TIME_FORMAT_UNITS,
@@ -230,13 +231,23 @@ def test_status_payload_marks_long_sqlite_queue_as_stalled(
     ("heartbeat_archive", "expected_state", "expected_runtime", "expected_healthy"),
     [
         (
-            {"configured": True, "runtime_enabled": True, "status": "active"},
+            {
+                "configured": True,
+                "runtime_enabled": True,
+                "status": "active",
+                "config_fingerprint": "archive-config-v1",
+            },
             "active",
             True,
             True,
         ),
         (
-            {"configured": True, "runtime_enabled": False, "status": "degraded"},
+            {
+                "configured": True,
+                "runtime_enabled": False,
+                "status": "degraded",
+                "config_fingerprint": "archive-config-v1",
+            },
             "degraded",
             False,
             False,
@@ -273,7 +284,12 @@ def test_status_payload_reports_actual_full_archive_runtime_state(
         manager,
         "_load_config",
         lambda: (
-            SimpleNamespace(full_archive=SimpleNamespace(enabled=True)),
+            SimpleNamespace(
+                full_archive=SimpleNamespace(
+                    enabled=True,
+                    runtime_fingerprint="archive-config-v1",
+                )
+            ),
             None,
         ),
     )
@@ -327,6 +343,72 @@ def test_status_payload_marks_archive_config_changed_since_daemon_start(
     assert payload["full_archive"] == {
         "configured": True,
         "runtime_enabled": False,
+        "status": "restart_required",
+    }
+    assert payload["healthy"] is False
+    assert "restart the daemon" in payload["status"]
+
+
+@pytest.mark.parametrize(
+    ("field_name", "changed_value"),
+    [
+        ("root_dir", Path("another-archive")),
+        ("source_chat_id", -2002),
+        ("capture_scope", "whole_group"),
+        ("topic_ids", (20, 30)),
+        ("shard_policy", "daily"),
+        ("max_messages_per_shard", 123_456),
+        ("max_shard_size_mb", 512),
+        ("backfill_limit_messages", 2_000),
+    ],
+)
+def test_status_payload_requires_restart_when_archive_settings_change(
+    monkeypatch,
+    tmp_path: Path,
+    field_name,
+    changed_value,
+) -> None:
+    manager = _manager(tmp_path)
+    manager._ensure_runtime_dir()
+    startup_archive = replace(
+        FullArchiveConfig.disabled(),
+        enabled=True,
+        root_dir=tmp_path / "archive",
+        source_chat_id=-1001,
+        capture_scope="topics",
+        topic_ids=(10, 20),
+    )
+    current_archive = replace(startup_archive, **{field_name: changed_value})
+    manager.run_health_path.write_text(
+        json.dumps(
+            {
+                "pid": 12345,
+                "last_tick": datetime.now(timezone.utc).isoformat(),
+                "sqlite_pending": 0,
+                "sqlite_pending_since": None,
+                "full_archive": {
+                    "configured": True,
+                    "runtime_enabled": True,
+                    "status": "active",
+                    "config_fingerprint": startup_archive.runtime_fingerprint,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(manager, "_current_run", lambda: (True, 12345))
+    monkeypatch.setattr(manager, "_config_health", lambda: (True, True, 30, False, None))
+    monkeypatch.setattr(
+        manager,
+        "_load_config",
+        lambda: (SimpleNamespace(full_archive=current_archive), None),
+    )
+
+    payload = manager.status_payload()
+
+    assert payload["full_archive"] == {
+        "configured": True,
+        "runtime_enabled": True,
         "status": "restart_required",
     }
     assert payload["healthy"] is False

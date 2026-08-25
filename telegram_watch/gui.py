@@ -2539,10 +2539,20 @@ class _RunnerManager:
             }
         if configured != daemon_configured:
             status = "restart_required"
+        elif configured:
+            reported_fingerprint = reported.get("config_fingerprint")
+            current_fingerprint = getattr(archive_config, "runtime_fingerprint", None)
+            if not isinstance(reported_fingerprint, str):
+                status = "unverified"
+                runtime_enabled = None
+            elif reported_fingerprint != current_fingerprint:
+                status = "restart_required"
+            elif runtime_enabled:
+                status = "active"
+            else:
+                status = "degraded" if running else "stopped"
         elif runtime_enabled:
             status = "active"
-        elif configured:
-            status = "degraded" if running else "stopped"
         else:
             status = "disabled"
         return {

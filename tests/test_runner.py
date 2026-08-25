@@ -83,6 +83,7 @@ def test_runner_health_heartbeat_reports_actual_full_archive_state(
         health_path,
         runner._AsyncSqliteGate(),
         full_archive_configured=configured,
+        full_archive_fingerprint="safe-archive-fingerprint",
     )
     health_loop.full_archive_runtime_enabled = runtime_enabled
 
@@ -93,6 +94,7 @@ def test_runner_health_heartbeat_reports_actual_full_archive_state(
         "configured": configured,
         "runtime_enabled": runtime_enabled,
         "status": expected_status,
+        "config_fingerprint": "safe-archive-fingerprint",
     }
 
 
@@ -2054,6 +2056,7 @@ async def test_run_daemon_registers_full_archive_handler_when_enabled(
         "configured": True,
         "runtime_enabled": True,
         "status": "active",
+        "config_fingerprint": config.full_archive.runtime_fingerprint,
     }
 
 
@@ -2176,6 +2179,7 @@ async def test_run_daemon_skips_full_archive_handlers_when_archive_degraded(
         "configured": True,
         "runtime_enabled": False,
         "status": "degraded",
+        "config_fingerprint": config.full_archive.runtime_fingerprint,
     }
 
 

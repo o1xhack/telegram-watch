@@ -117,6 +117,7 @@ class _RunnerHealthLoop:
         sqlite_gate: _AsyncSqliteGate,
         *,
         full_archive_configured: bool = False,
+        full_archive_fingerprint: str | None = None,
         interval_seconds: float = RUNNER_HEALTH_INTERVAL_SECONDS,
     ) -> None:
         self.path = path
@@ -124,6 +125,7 @@ class _RunnerHealthLoop:
         self.interval_seconds = interval_seconds
         self.started_at = utc_now()
         self.full_archive_configured = full_archive_configured
+        self.full_archive_fingerprint = full_archive_fingerprint
         self.full_archive_runtime_enabled = False
         self._task: asyncio.Task[None] | None = None
 
@@ -165,6 +167,7 @@ class _RunnerHealthLoop:
                     if self.full_archive_runtime_enabled
                     else "degraded" if self.full_archive_configured else "disabled"
                 ),
+                "config_fingerprint": self.full_archive_fingerprint,
             },
         }
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -860,6 +863,7 @@ async def run_daemon(
             health_path,
             sqlite_gate,
             full_archive_configured=config.full_archive.enabled,
+            full_archive_fingerprint=config.full_archive.runtime_fingerprint,
         )
         if health_path is not None
         else None
